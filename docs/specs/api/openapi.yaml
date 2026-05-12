@@ -1,0 +1,964 @@
+openapi: 3.0.3
+info:
+  title: Sub2API
+  description: |
+    轻量级 API 聚合中转服务，提供 OpenAI 兼容格式的统一接口。
+    
+    ## 认证
+    所有 API 请求需要在 Header 中携带 API Key：
+    ```
+    Authorization: Bearer sk-sub2api-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ```
+    
+    ## 错误处理
+    错误响应遵循统一格式：
+    ```json
+    {
+      "error": {
+        "code": "error_code",
+        "message": "Human readable message",
+        "type": "error_type"
+      }
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: Sub2API Support
+
+servers:
+  - url: https://api.sub2api.com
+    description: Production
+  - url: http://localhost:3000
+    description: Local Development
+
+tags:
+  - name: Chat
+    description: Chat Completions API
+  - name: Models
+    description: Model management
+  - name: Keys
+    description: API Key management
+  - name: Usage
+    description: Usage and billing
+  - name: Admin
+    description: Admin operations (requires admin key)
+
+paths:
+  # ============================================
+  # Chat Completions
+  # ============================================
+  /v1/chat/completions:
+    post:
+      tags: [Chat]
+      summary: Create chat completion
+      description: |
+        创建一个聊天补全请求。支持流式和非流式响应。
+        
+        支持的模型：
+        - Anthropic: claude-3-5-sonnet-20241022, claude-3-opus-20240229, claude-3-haiku-20240307
+        - OpenAI: gpt-4o, gpt-4o-mini, gpt-4-turbo
+        - DeepSeek: deepseek-chat, deepseek-coder
+      operationId: createChatCompletion
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+            examples:
+              simple:
+                summary: Simple request
+                value:
+                  model: "claude-3-5-sonnet-20241022"
+                  messages:
+                    - role: "user"
+                      content: "Hello, how are you?"
+              with_system:
+                summary: With system message
+                value:
+                  model: "claude-3-5-sonnet-20241022"
+                  messages:
+                    - role: "system"
+                      content: "You are a helpful assistant."
+                    - role: "user"
+                      content: "What is 2+2?"
+                  max_tokens: 100
+              streaming:
+                summary: Streaming request
+                value:
+                  model: "claude-3-5-sonnet-20241022"
+                  messages:
+                    - role: "user"
+                      content: "Tell me a story"
+                  stream: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE stream of ChatCompletionChunk objects
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/InsufficientBalance'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  # ============================================
+  # Models
+  # ============================================
+  /v1/models:
+    get:
+      tags: [Models]
+      summary: List available models
+      description: 返回所有可用模型列表
+      operationId: listModels
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Model list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/models/{model_id}:
+    get:
+      tags: [Models]
+      summary: Get model details
+      description: 返回指定模型的详细信息
+      operationId: getModel
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: claude-3-5-sonnet-20241022
+      responses:
+        '200':
+          description: Model details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Model'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================
+  # API Keys
+  # ============================================
+  /v1/keys:
+    get:
+      tags: [Keys]
+      summary: List user's API keys
+      description: 返回当前用户的所有 API Key（不含完整密钥）
+      operationId: listKeys
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Key list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Keys]
+      summary: Create new API key
+      description: |
+        创建新的 API Key。
+        
+        ⚠️ 完整的 Key 值仅在此响应中返回一次，之后无法再获取。
+      operationId: createKey
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKeyRequest'
+      responses:
+        '201':
+          description: Key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyWithSecret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/keys/{key_id}:
+    get:
+      tags: [Keys]
+      summary: Get key details
+      operationId: getKey
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Key details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Keys]
+      summary: Update key
+      description: 更新 Key 的名称或额度
+      operationId: updateKey
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateKeyRequest'
+      responses:
+        '200':
+          description: Key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Keys]
+      summary: Disable key
+      description: 禁用 API Key（软删除）
+      operationId: deleteKey
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Key disabled
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================
+  # Usage & Billing
+  # ============================================
+  /v1/usage:
+    get:
+      tags: [Usage]
+      summary: Get usage summary
+      description: 返回余额和用量统计
+      operationId: getUsage
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Usage summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/transactions:
+    get:
+      tags: [Usage]
+      summary: List transactions
+      description: 返回交易流水记录
+      operationId: listTransactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [topup, consume, refund]
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================
+  # Admin Operations
+  # ============================================
+  /admin/keys:
+    post:
+      tags: [Admin]
+      summary: Create key with initial balance
+      description: 管理员为用户创建 Key 并设置初始余额
+      operationId: adminCreateKey
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminCreateKeyRequest'
+      responses:
+        '201':
+          description: Key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyWithSecret'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/topup:
+    post:
+      tags: [Admin]
+      summary: Top up user balance
+      description: 管理员为用户充值
+      operationId: adminTopup
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopupRequest'
+      responses:
+        '200':
+          description: Topup successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopupResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{user_id}:
+    get:
+      tags: [Admin]
+      summary: Get user info
+      description: 获取用户详细信息
+      operationId: adminGetUser
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================
+  # Health Check
+  # ============================================
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      description: 健康检查端点
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+components:
+  # ============================================
+  # Security Schemes
+  # ============================================
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        用户 API Key，格式：`sk-sub2api-{32 chars}`
+    AdminAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+      description: 管理员密钥
+
+  # ============================================
+  # Schemas
+  # ============================================
+  schemas:
+    # --- Chat Completions ---
+    ChatCompletionRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          description: 模型 ID
+          example: "claude-3-5-sonnet-20241022"
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+          minItems: 1
+        max_tokens:
+          type: integer
+          description: 最大输出 token 数
+          default: 4096
+          minimum: 1
+          maximum: 128000
+        temperature:
+          type: number
+          description: 采样温度
+          default: 1.0
+          minimum: 0
+          maximum: 2
+        top_p:
+          type: number
+          description: Nucleus sampling
+          default: 1.0
+          minimum: 0
+          maximum: 1
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: 停止序列
+        stream:
+          type: boolean
+          description: 是否流式返回
+          default: false
+
+    Message:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant]
+        content:
+          type: string
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "chatcmpl-abc123"
+        object:
+          type: string
+          enum: [chat.completion]
+        created:
+          type: integer
+          description: Unix timestamp
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Choice'
+        usage:
+          $ref: '#/components/schemas/Usage'
+
+    Choice:
+      type: object
+      properties:
+        index:
+          type: integer
+        message:
+          $ref: '#/components/schemas/Message'
+        finish_reason:
+          type: string
+          enum: [stop, length, content_filter]
+
+    Usage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+
+    # --- Models ---
+    Model:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "claude-3-5-sonnet-20241022"
+        object:
+          type: string
+          enum: [model]
+        created:
+          type: integer
+        owned_by:
+          type: string
+          example: "anthropic"
+        pricing:
+          type: object
+          properties:
+            input:
+              type: number
+              description: "$/1M tokens"
+            output:
+              type: number
+              description: "$/1M tokens"
+
+    ModelList:
+      type: object
+      properties:
+        object:
+          type: string
+          enum: [list]
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Model'
+
+    # --- API Keys ---
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "key_abc123"
+        key_prefix:
+          type: string
+          description: Key 前缀（用于识别）
+          example: "sk-sub2api-aBcD..."
+        name:
+          type: string
+          example: "My App Key"
+        quota:
+          type: number
+          nullable: true
+          description: 额度限制（null=无限）
+        used_amount:
+          type: number
+          description: 已使用额度
+        status:
+          type: string
+          enum: [active, disabled]
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ApiKeyWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          properties:
+            key:
+              type: string
+              description: 完整 Key（仅返回一次）
+              example: "sk-sub2api-aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"
+
+    ApiKeyList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKey'
+
+    CreateKeyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "My App Key"
+        quota:
+          type: number
+          description: 额度限制
+        expires_at:
+          type: string
+          format: date-time
+
+    UpdateKeyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        quota:
+          type: number
+
+    # --- Usage & Transactions ---
+    UsageSummary:
+      type: object
+      properties:
+        balance:
+          type: number
+          description: 当前余额 (USD)
+          example: 9.876543
+        currency:
+          type: string
+          enum: [USD]
+        usage_today:
+          $ref: '#/components/schemas/UsageStats'
+        usage_month:
+          $ref: '#/components/schemas/UsageStats'
+
+    UsageStats:
+      type: object
+      properties:
+        requests:
+          type: integer
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cost:
+          type: number
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [topup, consume, refund]
+        amount:
+          type: number
+          description: 金额（consume 为负）
+        balance_after:
+          type: number
+        model:
+          type: string
+          nullable: true
+        input_tokens:
+          type: integer
+          nullable: true
+        output_tokens:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    TransactionList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # --- Admin ---
+    AdminCreateKeyRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+        name:
+          type: string
+        balance:
+          type: number
+          description: 初始余额
+
+    TopupRequest:
+      type: object
+      required:
+        - user_id
+        - amount
+      properties:
+        user_id:
+          type: string
+        amount:
+          type: number
+          minimum: 0.01
+        note:
+          type: string
+
+    TopupResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+        amount:
+          type: number
+        balance_before:
+          type: number
+        balance_after:
+          type: number
+        transaction_id:
+          type: string
+
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        balance:
+          type: number
+        level:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKey'
+
+    # --- Health ---
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        uptime:
+          type: string
+        components:
+          type: object
+          properties:
+            redis:
+              $ref: '#/components/schemas/ComponentStatus'
+            database:
+              $ref: '#/components/schemas/ComponentStatus'
+
+    ComponentStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        latency_ms:
+          type: integer
+
+    # --- Error ---
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            type:
+              type: string
+
+  # ============================================
+  # Responses
+  # ============================================
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "invalid_request"
+              message: "Invalid request parameters"
+              type: "invalid_request_error"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "invalid_api_key"
+              message: "Invalid API key"
+              type: "authentication_error"
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "admin_key_required"
+              message: "Admin key required"
+              type: "authentication_error"
+
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "not_found"
+              message: "Resource not found"
+              type: "not_found_error"
+
+    InsufficientBalance:
+      description: Insufficient Balance
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "insufficient_balance"
+              message: "Insufficient balance"
+              type: "billing_error"
+
+    RateLimited:
+      description: Rate Limited
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "rate_limited"
+              message: "Rate limit exceeded"
+              type: "rate_limit_error"
+
+    InternalError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "internal_error"
+              message: "Internal server error"
+              type: "server_error"
+
+    UpstreamError:
+      description: Bad Gateway
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "upstream_error"
+              message: "Upstream service error"
+              type: "gateway_error"
+
+    GatewayTimeout:
+      description: Gateway Timeout
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: "gateway_timeout"
+              message: "Upstream service timeout"
+              type: "gateway_error"

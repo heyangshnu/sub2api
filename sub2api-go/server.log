@@ -1,0 +1,20 @@
+2026/04/22 16:37:20 [Syncer] Started with interval 1m0s
+2026/04/22 16:37:20 ===========================================
+2026/04/22 16:37:20   Sub2API Server Starting
+2026/04/22 16:37:20 ===========================================
+2026/04/22 16:37:20   Port:       3000
+2026/04/22 16:37:20   Store:      redis+sqlite
+2026/04/22 16:37:20   Providers:  1 configured
+2026/04/22 16:37:20     - deepseek: 2 models
+2026/04/22 16:37:20 ===========================================
+2026/04/22 16:37:20   Endpoints:
+2026/04/22 16:37:20     POST /v1/chat/completions  - Chat API
+2026/04/22 16:37:20     GET  /v1/models            - List models
+2026/04/22 16:37:20     GET  /v1/usage             - Get usage stats
+2026/04/22 16:37:20     GET  /v1/transactions      - Get transaction history
+2026/04/22 16:37:20     POST /admin/keys           - Create API key
+2026/04/22 16:37:20     GET  /admin/keys           - List API keys
+2026/04/22 16:37:20     POST /admin/keys/:id/topup - Topup balance
+2026/04/22 16:37:20     GET  /health               - Health check
+2026/04/22 16:37:20 ===========================================
+2026/04/22 16:37:20 Failed to start server: listen tcp :3000: bind: address already in use

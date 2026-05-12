@@ -1,0 +1,37 @@
+# ============== 敏感信息 ==============
+.env
+.env.*
+*.env
+sub2api-go/.env
+
+# ============== 数据库 ==============
+*.db
+*.db-shm
+*.db-wal
+dump.rdb
+
+# ============== 依赖目录 ==============
+node_modules/
+dashboard/node_modules/
+
+# ============== 构建产物 ==============
+sub2api-go/bin/
+dashboard/.next/
+dashboard/out/
+*.tar.gz
+
+# ============== IDE / 系统 ==============
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ============== expect 脚本（含服务器信息）==============
+*.exp
+
+# ============== WorkBuddy 工作目录 ==============
+.workbuddy/
+
+# ============== 交接文档（含敏感信息）==============
+HANDOVER.md
