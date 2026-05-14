@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/bcrypt"
 	"sub2api-go/internal/model"
 )
 
@@ -60,10 +62,14 @@ func (s *SQLiteStore) migrate() error {
 		password_hash TEXT NOT NULL,
 		name TEXT,
 		status TEXT NOT NULL DEFAULT 'active',
+		email_verified INTEGER NOT NULL DEFAULT 0,
+		email_verify_token_hash TEXT,
+		email_verify_expires_at DATETIME,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+	CREATE INDEX IF NOT EXISTS idx_users_verify_token_hash ON users(email_verify_token_hash);
 
 	CREATE TABLE IF NOT EXISTS api_keys (
 		id TEXT PRIMARY KEY,
@@ -106,10 +112,39 @@ func (s *SQLiteStore) migrate() error {
 		output_price_per_k REAL NOT NULL,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS register_otps (
+		email TEXT PRIMARY KEY,
+		code_hash TEXT NOT NULL,
+		expires_at DATETIME NOT NULL,
+		created_at DATETIME NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS reset_password_otps (
+		email TEXT PRIMARY KEY,
+		code_hash TEXT NOT NULL,
+		expires_at DATETIME NOT NULL,
+		created_at DATETIME NOT NULL
+	);
 	`
 
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Backward-compatible migrations for existing databases.
+	alterStmts := []string{
+		`ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN email_verify_token_hash TEXT`,
+		`ALTER TABLE users ADD COLUMN email_verify_expires_at DATETIME`,
+	}
+	for _, stmt := range alterStmts {
+		if _, err := s.db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return err
+		}
+	}
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_verify_token_hash ON users(email_verify_token_hash)`)
+	return nil
 }
 
 // ==================== Key Operations ====================
@@ -358,8 +393,8 @@ func (s *SQLiteStore) GetUsageStatsByKeyID(ctx context.Context, keyID string) (t
 
 func (s *SQLiteStore) CreateUser(ctx context.Context, user *model.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, name, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (id, email, password_hash, name, status, email_verified, email_verify_token_hash, email_verify_expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.ExecContext(ctx, query,
 		user.ID,
@@ -367,6 +402,9 @@ func (s *SQLiteStore) CreateUser(ctx context.Context, user *model.User) error {
 		user.PasswordHash,
 		user.Name,
 		user.Status,
+		user.EmailVerified,
+		user.EmailVerifyTokenHash,
+		user.EmailVerifyExpiresAt,
 		user.CreatedAt,
 		user.UpdatedAt,
 	)
@@ -375,16 +413,20 @@ func (s *SQLiteStore) CreateUser(ctx context.Context, user *model.User) error {
 
 func (s *SQLiteStore) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	query := `
-		SELECT id, email, password_hash, name, status, created_at, updated_at
+		SELECT id, email, password_hash, name, status, email_verified, email_verify_token_hash, email_verify_expires_at, created_at, updated_at
 		FROM users WHERE email = ?
 	`
 	var user model.User
+	var verifyExpiresAt sql.NullTime
 	err := s.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
 		&user.Status,
+		&user.EmailVerified,
+		&user.EmailVerifyTokenHash,
+		&verifyExpiresAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -393,22 +435,29 @@ func (s *SQLiteStore) GetUserByEmail(ctx context.Context, email string) (*model.
 	}
 	if err != nil {
 		return nil, err
+	}
+	if verifyExpiresAt.Valid {
+		user.EmailVerifyExpiresAt = &verifyExpiresAt.Time
 	}
 	return &user, nil
 }
 
 func (s *SQLiteStore) GetUserByID(ctx context.Context, userID string) (*model.User, error) {
 	query := `
-		SELECT id, email, password_hash, name, status, created_at, updated_at
+		SELECT id, email, password_hash, name, status, email_verified, email_verify_token_hash, email_verify_expires_at, created_at, updated_at
 		FROM users WHERE id = ?
 	`
 	var user model.User
+	var verifyExpiresAt sql.NullTime
 	err := s.db.QueryRowContext(ctx, query, userID).Scan(
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
 		&user.Status,
+		&user.EmailVerified,
+		&user.EmailVerifyTokenHash,
+		&verifyExpiresAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -418,5 +467,166 @@ func (s *SQLiteStore) GetUserByID(ctx context.Context, userID string) (*model.Us
 	if err != nil {
 		return nil, err
 	}
+	if verifyExpiresAt.Valid {
+		user.EmailVerifyExpiresAt = &verifyExpiresAt.Time
+	}
 	return &user, nil
+}
+
+func (s *SQLiteStore) UpdateUser(ctx context.Context, user *model.User) error {
+	query := `
+		UPDATE users
+		SET email = ?, password_hash = ?, name = ?, status = ?, email_verified = ?, email_verify_token_hash = ?, email_verify_expires_at = ?, updated_at = ?
+		WHERE id = ?
+	`
+	_, err := s.db.ExecContext(ctx, query,
+		user.Email,
+		user.PasswordHash,
+		user.Name,
+		user.Status,
+		user.EmailVerified,
+		user.EmailVerifyTokenHash,
+		user.EmailVerifyExpiresAt,
+		user.UpdatedAt,
+		user.ID,
+	)
+	return err
+}
+
+func normalizeRegisterEmailSQLite(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func (s *SQLiteStore) SaveRegisterOTP(ctx context.Context, email, codeHash string, expiresAt, createdAt time.Time) error {
+	em := normalizeRegisterEmailSQLite(email)
+	var prevCreated time.Time
+	err := s.db.QueryRowContext(ctx, `SELECT created_at FROM register_otps WHERE email = ?`, em).Scan(&prevCreated)
+	if err == nil {
+		if time.Since(prevCreated) < 60*time.Second {
+			return ErrRegisterOTPCooldown
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+
+	q := `
+		INSERT INTO register_otps (email, code_hash, expires_at, created_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(email) DO UPDATE SET
+			code_hash = excluded.code_hash,
+			expires_at = excluded.expires_at,
+			created_at = excluded.created_at
+	`
+	_, err = s.db.ExecContext(ctx, q, em, codeHash, expiresAt, createdAt)
+	return err
+}
+
+func (s *SQLiteStore) ConsumeRegisterOTP(ctx context.Context, email, plainCode string) error {
+	em := normalizeRegisterEmailSQLite(email)
+	var hash string
+	var exp time.Time
+	err := s.db.QueryRowContext(ctx,
+		`SELECT code_hash, expires_at FROM register_otps WHERE email = ?`, em,
+	).Scan(&hash, &exp)
+	if err == sql.ErrNoRows {
+		return ErrRegisterOTPInvalid
+	}
+	if err != nil {
+		return err
+	}
+	if time.Now().After(exp) {
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM register_otps WHERE email = ?`, em)
+		return ErrRegisterOTPInvalid
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(strings.TrimSpace(plainCode))); err != nil {
+		return ErrRegisterOTPInvalid
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM register_otps WHERE email = ?`, em)
+	return err
+}
+
+func (s *SQLiteStore) SaveResetPasswordOTP(ctx context.Context, email, codeHash string, expiresAt, createdAt time.Time) error {
+	em := normalizeRegisterEmailSQLite(email)
+	var prevCreated time.Time
+	err := s.db.QueryRowContext(ctx, `SELECT created_at FROM reset_password_otps WHERE email = ?`, em).Scan(&prevCreated)
+	if err == nil {
+		if time.Since(prevCreated) < 60*time.Second {
+			return ErrResetPasswordOTPCooldown
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+
+	q := `
+		INSERT INTO reset_password_otps (email, code_hash, expires_at, created_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(email) DO UPDATE SET
+			code_hash = excluded.code_hash,
+			expires_at = excluded.expires_at,
+			created_at = excluded.created_at
+	`
+	_, err = s.db.ExecContext(ctx, q, em, codeHash, expiresAt, createdAt)
+	return err
+}
+
+func (s *SQLiteStore) ConsumeResetPasswordOTP(ctx context.Context, email, plainCode string) error {
+	em := normalizeRegisterEmailSQLite(email)
+	var hash string
+	var exp time.Time
+	err := s.db.QueryRowContext(ctx,
+		`SELECT code_hash, expires_at FROM reset_password_otps WHERE email = ?`, em,
+	).Scan(&hash, &exp)
+	if err == sql.ErrNoRows {
+		return ErrResetPasswordOTPInvalid
+	}
+	if err != nil {
+		return err
+	}
+	if time.Now().After(exp) {
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM reset_password_otps WHERE email = ?`, em)
+		return ErrResetPasswordOTPInvalid
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(strings.TrimSpace(plainCode))); err != nil {
+		return ErrResetPasswordOTPInvalid
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM reset_password_otps WHERE email = ?`, em)
+	return err
+}
+
+// DeleteRegistrationByEmail removes user, keys, transactions, and register / reset OTP rows in SQLite.
+// linkedUserID is set when the account lived in Redis but api_keys were synced to SQLite without a users row.
+func (s *SQLiteStore) DeleteRegistrationByEmail(ctx context.Context, email string, linkedUserID string) error {
+	em := normalizeRegisterEmailSQLite(email)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var uid string
+	err = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE lower(email) = lower(?)`, email).Scan(&uid)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if uid == "" && linkedUserID != "" {
+		uid = linkedUserID
+	}
+	if uid != "" {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM transactions WHERE key_id IN (SELECT id FROM api_keys WHERE user_id = ?)`, uid); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, uid); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, uid); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM register_otps WHERE email = ?`, em); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM reset_password_otps WHERE email = ?`, em); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

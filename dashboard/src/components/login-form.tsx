@@ -1,28 +1,164 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { apiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Eye, EyeOff, KeyRound, Lock, Mail, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+type AuthMode = "login" | "register" | "apikey" | "forgot";
+
+const inputLight =
+  "h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-emerald-500/60 focus-visible:ring-2 focus-visible:ring-emerald-500/20 md:text-sm";
 
 export function LoginForm() {
   const { loginWithApiKey, loginWithEmail, register } = useAuth();
+  const envEmailVerifyHint =
+    process.env.NEXT_PUBLIC_EMAIL_VERIFY_ENABLED === "true";
+  const [emailVerifyEnabled, setEmailVerifyEnabled] = useState(
+    envEmailVerifyHint
+  );
+  const [inviteRequired, setInviteRequired] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  
-  // API Key login
+
   const [apiKey, setApiKey] = useState("");
-  
-  // Email login/register
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [sendCooldown, setSendCooldown] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  /** After successful register: show on login card before user signs in */
+  const [postRegisterNotice, setPostRegisterNotice] = useState("");
+
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [resetVerificationCode, setResetVerificationCode] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetSendCooldown, setResetSendCooldown] = useState(0);
+  const [showResetNewPassword, setShowResetNewPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
+
+  useEffect(() => {
+    if (sendCooldown <= 0) return;
+    const t = setInterval(() => {
+      setSendCooldown((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [sendCooldown]);
+
+  useEffect(() => {
+    if (resetSendCooldown <= 0) return;
+    const t = setInterval(() => {
+      setResetSendCooldown((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resetSendCooldown]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .getAuthConfig()
+      .then((cfg) => {
+        if (!cancelled) {
+          setEmailVerifyEnabled(!!cfg.email_verify_enabled);
+          if (typeof cfg.invite_required === "boolean") {
+            setInviteRequired(cfg.invite_required);
+          }
+        }
+      })
+      .catch(() => {
+        /* 旧后端无此接口或网络失败时沿用 NEXT_PUBLIC_* 提示 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const switchMode = (next: AuthMode) => {
+    setMode(next);
+    setError("");
+    setSuccessMessage("");
+    if (next !== "login") {
+      setPostRegisterNotice("");
+    }
+    if (next !== "forgot") {
+      setResetVerificationCode("");
+      setResetNewPassword("");
+      setResetConfirmPassword("");
+      setResetSendCooldown(0);
+    }
+    if (next === "forgot") {
+      setForgotEmail(email.trim());
+    }
+  };
+
+  const handleSendResetCode = async () => {
+    setError("");
+    setSuccessMessage("");
+    const em = forgotEmail.trim();
+    if (!em) {
+      setError("请先填写邮箱");
+      return;
+    }
+    try {
+      await apiClient.sendResetPasswordCode(em);
+      setSuccessMessage("验证码已发送，请查收邮件");
+      setResetSendCooldown(60);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "发送失败");
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+    setSuccessMessage("");
+
+    if (resetNewPassword !== resetConfirmPassword) {
+      setError("两次输入的密码不一致");
+      setIsLoading(false);
+      return;
+    }
+    if (resetNewPassword.length < 6) {
+      setError("密码至少 6 位");
+      setIsLoading(false);
+      return;
+    }
+    const em = forgotEmail.trim();
+    if (!em) {
+      setError("请先填写邮箱");
+      setIsLoading(false);
+      return;
+    }
+    const code = resetVerificationCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setError("请填写邮件中的 6 位数字验证码");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      await apiClient.resetPassword(em, code, resetNewPassword);
+      setEmail(em);
+      setPassword("");
+      switchMode("login");
+      setSuccessMessage("密码已重置，请使用新密码登录");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "重置失败");
+    }
+    setIsLoading(false);
+  };
 
   const handleApiKeyLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +167,7 @@ export function LoginForm() {
 
     const success = await loginWithApiKey(apiKey);
     if (!success) {
-      setError("Invalid API Key");
+      setError("API Key 无效");
     }
     setIsLoading(false);
   };
@@ -43,7 +179,7 @@ export function LoginForm() {
 
     const result = await loginWithEmail(email, password);
     if (!result.success) {
-      setError(result.error || "Login failed");
+      setError(result.error || "登录失败");
     }
     setIsLoading(false);
   };
@@ -55,176 +191,605 @@ export function LoginForm() {
     setSuccessMessage("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("两次输入的密码不一致");
       setIsLoading(false);
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError("密码至少 6 位");
       setIsLoading(false);
       return;
     }
 
-    const result = await register(email, password, name || undefined, inviteCode || undefined);
+    if (emailVerifyEnabled && !verificationCode.trim()) {
+      setError("请填写邮箱中的 6 位验证码");
+      setIsLoading(false);
+      return;
+    }
+
+    if (inviteRequired !== false && !inviteCode.trim()) {
+      setError("请填写邀请码");
+      setIsLoading(false);
+      return;
+    }
+
+    const result = await register(
+      email,
+      password,
+      name || undefined,
+      inviteCode.trim() || undefined,
+      emailVerifyEnabled ? verificationCode.trim() : undefined
+    );
     if (result.success) {
-      if (result.apiKey) {
-        setSuccessMessage(`Registration successful! Your API Key: ${result.apiKey}`);
-      }
+      setPostRegisterNotice(
+        `注册成功。请使用本邮箱与密码登录；登录后请先创建 API Key，再充值使用。`
+      );
+      setSuccessMessage("");
+      setError("");
+      setVerificationCode("");
+      setConfirmPassword("");
+      setPassword("");
+      setInviteCode("");
+      setMode("login");
     } else {
-      setError(result.error || "Registration failed");
+      setError(result.error || "注册失败");
     }
     setIsLoading(false);
   };
 
+  const handleSendRegisterCode = async () => {
+    setError("");
+    setSuccessMessage("");
+    const em = email.trim();
+    if (!em) {
+      setError("请先填写邮箱");
+      return;
+    }
+    try {
+      await apiClient.sendRegisterCode(em);
+      setSuccessMessage("验证码已发送，请查收邮件");
+      setSendCooldown(60);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "发送失败");
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Sub2API</CardTitle>
-          <CardDescription>OpenAI Compatible API Gateway</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="register">Register</TabsTrigger>
-              <TabsTrigger value="apikey">API Key</TabsTrigger>
-            </TabsList>
-            
-            {/* Email Login Tab */}
-            <TabsContent value="login">
-              <form onSubmit={handleEmailLogin} className="space-y-4 mt-4">
+    <div
+      className="relative flex min-h-screen flex-col overflow-x-hidden px-4 py-10 sm:py-16"
+      data-auth-shell
+    >
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-col items-center gap-8 sm:gap-10">
+        {/* 品牌区（参考图：Logo + 主副标题） */}
+        <header className="flex flex-col items-center text-center">
+          <div
+            className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500 shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-400/40"
+            aria-hidden
+          >
+            <TrendingUp className="h-8 w-8 text-white" strokeWidth={2.5} />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">
+            Sub2API
+          </h1>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-600 sm:max-w-sm">
+            OpenAI 兼容网关 · 管理 API Key、用量与计费
+          </p>
+        </header>
+
+        {/* 居中卡片：登录 / 注册 / API Key 切换 */}
+        <div
+          className={cn(
+            "w-full rounded-2xl border border-slate-200/90 bg-white/75 p-8 shadow-xl shadow-slate-300/30 backdrop-blur-2xl",
+            "ring-1 ring-slate-200/50 sm:p-9"
+          )}
+        >
+          {mode === "login" && (
+            <>
+              <h2 className="mb-6 text-lg font-semibold text-slate-900">登录账户</h2>
+              {postRegisterNotice && (
+                <div className="mb-5 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/95 p-4 ring-1 ring-emerald-100">
+                  <p className="text-sm leading-relaxed text-emerald-900">
+                    {postRegisterNotice}
+                  </p>
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
+                    onClick={() => setPostRegisterNotice("")}
+                  >
+                    我知道了
+                  </button>
+                </div>
+              )}
+              <form onSubmit={handleEmailLogin} className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
+                  <Label htmlFor="login-email" className="text-xs text-slate-600">
+                    邮箱
+                  </Label>
                   <Input
                     id="login-email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder="your@email.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    className={inputLight}
                     required
+                    autoComplete="email"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="login-password">Password</Label>
-                  <Input
-                    id="login-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
+                  <Label htmlFor="login-password" className="text-xs text-slate-600">
+                    密码
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="login-password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="输入密码"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={cn(inputLight, "pr-11")}
+                      required
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-                {error && (
-                  <p className="text-sm text-red-500">{error}</p>
-                )}
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Logging in..." : "Login"}
-                </Button>
-              </form>
-            </TabsContent>
-            
-            {/* Register Tab */}
-            <TabsContent value="register">
-              <form onSubmit={handleRegister} className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="register-name">Name (optional)</Label>
-                  <Input
-                    id="register-name"
-                    type="text"
-                    placeholder="John Doe"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="register-email">Email</Label>
-                  <Input
-                    id="register-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="register-password">Password</Label>
-                  <Input
-                    id="register-password"
-                    type="password"
-                    placeholder="At least 6 characters"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="register-confirm">Confirm Password</Label>
-                  <Input
-                    id="register-confirm"
-                    type="password"
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="register-invite">Invite Code</Label>
-                  <Input
-                    id="register-invite"
-                    type="text"
-                    placeholder="Enter invite code"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    required
-                  />
-                </div>
-                {error && (
-                  <p className="text-sm text-red-500">{error}</p>
-                )}
-                {successMessage && (
-                  <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-md">
-                    <p className="text-sm text-green-500 break-all">{successMessage}</p>
+                {emailVerifyEnabled && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+                      onClick={() => switchMode("forgot")}
+                    >
+                      忘记密码？
+                    </button>
                   </div>
                 )}
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Creating account..." : "Create Account"}
-                </Button>
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                  >
+                    {error}
+                  </p>
+                )}
+                {successMessage && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900">
+                    {successMessage}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="mt-2 flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {isLoading ? "登录中…" : "登录"}
+                </button>
               </form>
-            </TabsContent>
-            
-            {/* API Key Login Tab */}
-            <TabsContent value="apikey">
-              <form onSubmit={handleApiKeyLogin} className="space-y-4 mt-4">
+              <p className="mt-6 text-center text-sm text-slate-600">
+                还没有账户？{" "}
+                <button
+                  type="button"
+                  className="font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                  onClick={() => switchMode("register")}
+                >
+                  立即注册
+                </button>
+              </p>
+              <p className="mt-4 text-center">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-800"
+                  onClick={() => switchMode("apikey")}
+                >
+                  <KeyRound className="size-3.5" />
+                  使用 API Key 登录
+                </button>
+              </p>
+            </>
+          )}
+
+          {mode === "forgot" && (
+            <>
+              <h2 className="mb-2 text-lg font-semibold text-slate-900">重置密码</h2>
+              <p className="mb-6 text-sm text-slate-600">
+                向注册邮箱发送 6 位验证码，填写后设置新密码（与注册时邮箱验证方式相同）。
+              </p>
+              <form onSubmit={handleResetPassword} className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="apiKey">API Key</Label>
+                  <Label htmlFor="forgot-email" className="text-xs text-slate-600">
+                    邮箱
+                  </Label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      id="forgot-email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className={cn(inputLight, "pl-10")}
+                      required
+                      autoComplete="email"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
+                  <Label htmlFor="reset-code" className="text-xs text-slate-600">
+                    邮箱验证码
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="reset-code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="6 位数字"
+                      maxLength={6}
+                      value={resetVerificationCode}
+                      onChange={(e) =>
+                        setResetVerificationCode(e.target.value.replace(/\D/g, ""))
+                      }
+                      className={cn(
+                        inputLight,
+                        "flex-1 text-center font-mono tracking-[0.25em]"
+                      )}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 shrink-0 border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:text-slate-900"
+                      disabled={resetSendCooldown > 0}
+                      onClick={handleSendResetCode}
+                    >
+                      {resetSendCooldown > 0 ? `${resetSendCooldown}s` : "发送验证码"}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-500">
+                    先填邮箱，点击发送验证码，将邮件中的 6 位数字填入后再设置新密码。
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-new-pw" className="text-xs text-slate-600">
+                    新密码
+                  </Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      id="reset-new-pw"
+                      type={showResetNewPassword ? "text" : "password"}
+                      placeholder="至少 6 位"
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      className={cn(inputLight, "pl-10 pr-11")}
+                      required
+                      autoComplete="new-password"
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                      onClick={() => setShowResetNewPassword((v) => !v)}
+                      aria-label={showResetNewPassword ? "隐藏密码" : "显示密码"}
+                    >
+                      {showResetNewPassword ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reset-confirm-pw" className="text-xs text-slate-600">
+                    确认新密码
+                  </Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      id="reset-confirm-pw"
+                      type={showResetConfirmPassword ? "text" : "password"}
+                      placeholder="再次输入"
+                      value={resetConfirmPassword}
+                      onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      className={cn(inputLight, "pl-10 pr-11")}
+                      required
+                      autoComplete="new-password"
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                      onClick={() => setShowResetConfirmPassword((v) => !v)}
+                      aria-label={showResetConfirmPassword ? "隐藏密码" : "显示密码"}
+                    >
+                      {showResetConfirmPassword ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                  >
+                    {error}
+                  </p>
+                )}
+                {successMessage && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-relaxed text-emerald-900">
+                    {successMessage}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {isLoading ? "提交中…" : "确认重置密码"}
+                </button>
+              </form>
+              <p className="mt-6 text-center text-sm text-slate-600">
+                <button
+                  type="button"
+                  className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+                  onClick={() => switchMode("login")}
+                >
+                  返回登录
+                </button>
+              </p>
+            </>
+          )}
+
+          {mode === "register" && (
+            <>
+              <h2 className="mb-6 text-lg font-semibold text-slate-900">创建账户</h2>
+              <form onSubmit={handleRegister} className="max-h-[min(70vh,560px)] space-y-4 overflow-y-auto pr-1">
+                <div className="space-y-2">
+                  <Label htmlFor="reg-name" className="text-xs text-slate-600">
+                    昵称（可选）
+                  </Label>
                   <Input
-                    id="apiKey"
-                    type="password"
-                    placeholder="sk-sub2api-..."
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    required
+                    id="reg-name"
+                    type="text"
+                    placeholder="显示名称"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className={inputLight}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Login directly with your API Key to view usage and balance
-                </p>
-                {error && (
-                  <p className="text-sm text-red-500">{error}</p>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-email" className="text-xs text-slate-600">
+                    邮箱
+                  </Label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      id="reg-email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className={cn(inputLight, "pl-10")}
+                      required
+                      autoComplete="email"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-password" className="text-xs text-slate-600">
+                    密码
+                  </Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      id="reg-password"
+                      type={showRegisterPassword ? "text" : "password"}
+                      placeholder="至少 6 位"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={cn(inputLight, "pl-10 pr-11")}
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                      onClick={() => setShowRegisterPassword((v) => !v)}
+                      aria-label={showRegisterPassword ? "隐藏密码" : "显示密码"}
+                    >
+                      {showRegisterPassword ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-confirm" className="text-xs text-slate-600">
+                    确认密码
+                  </Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      id="reg-confirm"
+                      type="password"
+                      placeholder="再次输入"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className={cn(inputLight, "pl-10")}
+                      required
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-invite" className="text-xs text-slate-600">
+                    邀请码
+                    {inviteRequired === false && (
+                      <span className="text-slate-500">（当前服务端未启用，可不填）</span>
+                    )}
+                  </Label>
+                  <Input
+                    id="reg-invite"
+                    type="text"
+                    placeholder={
+                      inviteRequired === false
+                        ? "未启用时可留空"
+                        : "须与服务器 INVITE_CODE 一致"
+                    }
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    className={inputLight}
+                    required={inviteRequired !== false}
+                  />
+                </div>
+                {emailVerifyEnabled && (
+                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
+                    <Label htmlFor="reg-code" className="text-xs text-slate-600">
+                      邮箱验证码
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="reg-code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="6 位数字"
+                        maxLength={6}
+                        value={verificationCode}
+                        onChange={(e) =>
+                          setVerificationCode(e.target.value.replace(/\D/g, ""))
+                        }
+                        className={cn(
+                          inputLight,
+                          "flex-1 text-center font-mono tracking-[0.25em]"
+                        )}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 shrink-0 border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:text-slate-900"
+                        disabled={sendCooldown > 0}
+                        onClick={handleSendRegisterCode}
+                      >
+                        {sendCooldown > 0 ? `${sendCooldown}s` : "发送验证码"}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-slate-500">
+                      先填邮箱，点击发送验证码，将邮件中的数字填入后再提交注册。
+                    </p>
+                  </div>
                 )}
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Validating..." : "Login with API Key"}
-                </Button>
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                  >
+                    {error}
+                  </p>
+                )}
+                {successMessage && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-relaxed text-emerald-900">
+                    <pre className="max-h-36 overflow-y-auto whitespace-pre-wrap break-all font-mono">
+                      {successMessage}
+                    </pre>
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {isLoading ? "创建中…" : "注册"}
+                </button>
               </form>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+              <p className="mt-6 text-center text-sm text-slate-600">
+                已有账户？{" "}
+                <button
+                  type="button"
+                  className="font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                  onClick={() => switchMode("login")}
+                >
+                  返回登录
+                </button>
+              </p>
+            </>
+          )}
+
+          {mode === "apikey" && (
+            <>
+              <h2 className="mb-2 text-lg font-semibold text-slate-900">API Key 登录</h2>
+              <p className="mb-6 text-sm text-slate-600">
+                直接粘贴控制台中的完整 Key，用于查看用量与余额。
+              </p>
+              <form onSubmit={handleApiKeyLogin} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="api-key" className="text-xs text-slate-600">
+                    API Key
+                  </Label>
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      id="api-key"
+                      type="password"
+                      placeholder="sk-sub2api-…"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      className={cn(inputLight, "pl-10 font-mono text-xs")}
+                      required
+                    />
+                  </div>
+                </div>
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                  >
+                    {error}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {isLoading ? "校验中…" : "登录"}
+                </button>
+              </form>
+              <p className="mt-6 text-center text-sm text-slate-600">
+                <button
+                  type="button"
+                  className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+                  onClick={() => switchMode("login")}
+                >
+                  返回邮箱登录
+                </button>
+              </p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -15,9 +15,9 @@ import (
 // DefaultRateLimit 默认频次限制：60 次/分钟
 const DefaultRateLimit = 60
 
-// RateLimitMiddleware 基于 Redis 的每 Key 频次限制
-// 同时校验 IP 白名单
-func RateLimitMiddleware(redisClient *redis.Client) gin.HandlerFunc {
+// RateLimitMiddleware 基于 Redis 的每 Key 频次限制，同时校验 IP 白名单。
+// redisFailOpen: 为 false 时，Redis 故障返回 503（fail-closed）；为 true 时放行（fail-open，默认）。
+func RateLimitMiddleware(redisClient *redis.Client, redisFailOpen bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey := GetAPIKey(c)
 		if apiKey == nil {
@@ -27,7 +27,7 @@ func RateLimitMiddleware(redisClient *redis.Client) gin.HandlerFunc {
 
 		// ========== IP 白名单校验 ==========
 		if len(apiKey.IPWhitelist) > 0 {
-			clientIP := getClientIP(c)
+			clientIP := c.ClientIP()
 			allowed := false
 			for _, ip := range apiKey.IPWhitelist {
 				ip = strings.TrimSpace(ip)
@@ -73,7 +73,11 @@ func RateLimitMiddleware(redisClient *redis.Client) gin.HandlerFunc {
 		ctx := c.Request.Context()
 		count, err := redisClient.Incr(ctx, rlKey).Result()
 		if err != nil {
-			// Redis 出错时放行，不影响服务
+			if !redisFailOpen {
+				c.JSON(http.StatusServiceUnavailable, model.NewAPIError("service_unavailable", "Rate limit service unavailable"))
+				c.Abort()
+				return
+			}
 			c.Next()
 			return
 		}
@@ -96,20 +100,4 @@ func RateLimitMiddleware(redisClient *redis.Client) gin.HandlerFunc {
 		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", int64(limit)-count))
 		c.Next()
 	}
-}
-
-// getClientIP 获取真实客户端 IP（考虑 Nginx 代理）
-func getClientIP(c *gin.Context) string {
-	// 优先从 X-Real-IP 获取（Nginx 设置）
-	if ip := c.GetHeader("X-Real-IP"); ip != "" {
-		return ip
-	}
-	// 从 X-Forwarded-For 取第一个
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	return c.ClientIP()
 }

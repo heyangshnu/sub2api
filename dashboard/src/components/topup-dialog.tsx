@@ -69,14 +69,25 @@ export function TopupDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="default" size="sm" />}>
+      <DialogTrigger
+        render={
+          <Button
+            variant="default"
+            size="sm"
+            disabled={!apiKey}
+            className="border border-emerald-200 bg-emerald-50 text-emerald-900 shadow-sm hover:bg-emerald-100 disabled:opacity-50"
+          />
+        }
+      >
         充值
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="border-slate-200/90 bg-white/95 text-slate-900 shadow-xl backdrop-blur-xl sm:max-w-md">
         <DialogHeader>
           <DialogTitle>账户充值</DialogTitle>
-          <DialogDescription>
-            选择充值金额，支付完成后余额将自动到账
+          <DialogDescription className="text-slate-600">
+            {apiKey
+              ? "选择充值金额，支付完成后余额将自动到账到当前 API Key"
+              : "请先创建 API Key 后再充值"}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -112,7 +123,7 @@ export function TopupDialog() {
 
           <Button
             onClick={handleTopup}
-            disabled={loading}
+            disabled={loading || !apiKey}
             className="w-full"
           >
             {loading ? "跳转中..." : `支付 $${amount}`}

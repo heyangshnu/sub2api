@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"sub2api-go/internal/model"
 )
@@ -13,6 +14,12 @@ var (
 	ErrKeyDisabled  = errors.New("api key is disabled")
 	ErrUserNotFound = errors.New("user not found")
 	ErrUserExists   = errors.New("user already exists")
+
+	ErrRegisterOTPInvalid   = errors.New("invalid or expired verification code")
+	ErrRegisterOTPCooldown   = errors.New("please wait before requesting another code")
+
+	ErrResetPasswordOTPInvalid = errors.New("invalid or expired verification code")
+	ErrResetPasswordOTPCooldown = errors.New("please wait before requesting another code")
 )
 
 // Store defines the interface for storage operations
@@ -43,6 +50,20 @@ type Store interface {
 	CreateUser(ctx context.Context, user *model.User) error
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	GetUserByID(ctx context.Context, userID string) (*model.User, error)
+	UpdateUser(ctx context.Context, user *model.User) error
+
+	// Registration email OTP (6-digit code), consumed on successful register
+	SaveRegisterOTP(ctx context.Context, email, codeHash string, expiresAt, createdAt time.Time) error
+	ConsumeRegisterOTP(ctx context.Context, email, plainCode string) error
+
+	// Password reset email OTP (6-digit), consumed on successful reset
+	SaveResetPasswordOTP(ctx context.Context, email, codeHash string, expiresAt, createdAt time.Time) error
+	ConsumeResetPasswordOTP(ctx context.Context, email, plainCode string) error
+
+	// Analytics & audit (Dashboard + chat)
+	AggregateConsumeByDay(ctx context.Context, keyHash string, days int) ([]model.DailyUsagePoint, error)
+	AppendRequestLog(ctx context.Context, entry *model.RequestLogEntry) error
+	ListRequestLogs(ctx context.Context, keyID string, limit, offset int) ([]*model.RequestLogEntry, int, error)
 }
 
 // Ensure implementations satisfy the interface

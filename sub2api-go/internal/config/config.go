@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +16,7 @@ type Config struct {
 	// Auth
 	JWTSecret  string
 	InviteCode string // 邀请码，空则不需要邀请码
+	AppEnv     string
 
 	// Providers
 	Providers []ProviderConfig
@@ -29,6 +32,24 @@ type Config struct {
 	StripeWebhookSecret string
 	StripeSuccessURL   string
 	StripeCancelURL    string
+
+	// Email verification
+	EmailVerifyEnabled bool
+	EmailVerifyBaseURL string
+	SMTPHost           string
+	SMTPPort           int
+	SMTPUsername       string
+	SMTPPassword       string
+	SMTPFrom           string
+
+	// Security / ops
+	TrustedProxies []string // CIDRs for gin.SetTrustedProxies (from TRUSTED_PROXIES)
+	// AllowMemoryStore: when false, Redis connection failure aborts startup in any env.
+	AllowMemoryStore bool
+	// RateLimitRedisFailOpen: when false, Redis errors in API rate limiter return 503 instead of allowing traffic.
+	RateLimitRedisFailOpen bool
+	// AllowUnknownModelPricing: when false, /v1/chat rejects models not listed in model.DefaultPricing.
+	AllowUnknownModelPricing bool
 }
 
 type ProviderConfig struct {
@@ -46,11 +67,16 @@ func Load() *Config {
 		return cfg
 	}
 
+	allowMem := getEnv("ALLOW_MEMORY_STORE", "true") != "false"
+	rlFailOpen := getEnv("RATE_LIMIT_REDIS_FAIL_OPEN", "true") != "false"
+	allowUnknownModel := getEnv("ALLOW_UNKNOWN_MODEL_PRICING", "true") != "false"
+
 	cfg = &Config{
 		Port:                getEnv("PORT", "3000"),
+		AppEnv:              getEnv("APP_ENV", "development"),
 		AdminKey:            getEnv("ADMIN_KEY", "sk-admin-sub2api-secret"),
 		JWTSecret:           getEnv("JWT_SECRET", "sub2api-jwt-secret-change-in-production"),
-		InviteCode:          getEnv("INVITE_CODE", ""), // 空则不需要邀请码
+		InviteCode:          strings.TrimSpace(getEnv("INVITE_CODE", "")), // 空则不需要邀请码
 		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379"),
 		DatabaseURL:         getEnv("DATABASE_URL", "sqlite://./data/sub2api.db"),
 		Providers:           loadProviders(),
@@ -58,6 +84,17 @@ func Load() *Config {
 		StripeWebhookSecret: getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		StripeSuccessURL:    getEnv("STRIPE_SUCCESS_URL", "http://localhost:3001/payment/success"),
 		StripeCancelURL:     getEnv("STRIPE_CANCEL_URL", "http://localhost:3001"),
+		EmailVerifyEnabled:  getEnv("EMAIL_VERIFY_ENABLED", "false") == "true",
+		EmailVerifyBaseURL:  getEnv("EMAIL_VERIFY_BASE_URL", "http://localhost:3001"),
+		SMTPHost:            getEnv("SMTP_HOST", ""),
+		SMTPPort:            getEnvInt("SMTP_PORT", 587),
+		SMTPUsername:        getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:        getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:            getEnv("SMTP_FROM", ""),
+		TrustedProxies:      getEnvSliceTrimmed("TRUSTED_PROXIES"),
+		AllowMemoryStore:    allowMem,
+		RateLimitRedisFailOpen: rlFailOpen,
+		AllowUnknownModelPricing: allowUnknownModel,
 	}
 
 	return cfg
@@ -68,6 +105,26 @@ func Get() *Config {
 		return Load()
 	}
 	return cfg
+}
+
+func (c *Config) IsProduction() bool {
+	return strings.EqualFold(c.AppEnv, "production")
+}
+
+func (c *Config) ValidateProductionSecrets() error {
+	if !c.IsProduction() {
+		return nil
+	}
+	if c.AdminKey == "" || c.AdminKey == "sk-admin-sub2api-secret" {
+		return errors.New("ADMIN_KEY is required in production and cannot use default value")
+	}
+	if c.JWTSecret == "" || c.JWTSecret == "sub2api-jwt-secret-change-in-production" {
+		return errors.New("JWT_SECRET is required in production and cannot use default value")
+	}
+	if len(c.JWTSecret) < 32 {
+		return fmt.Errorf("JWT_SECRET must be at least 32 chars in production")
+	}
+	return nil
 }
 
 func loadProviders() []ProviderConfig {
@@ -142,4 +199,19 @@ func getEnvSlice(key string) []string {
 		return nil
 	}
 	return strings.Split(val, ",")
+}
+
+func getEnvSliceTrimmed(key string) []string {
+	parts := getEnvSlice(key)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

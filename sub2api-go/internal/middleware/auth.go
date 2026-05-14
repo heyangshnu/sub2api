@@ -1,7 +1,11 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"context"
+	"encoding/hex"
 	"net/http"
 	"strings"
 
@@ -70,7 +74,15 @@ func AdminAuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			adminKey = strings.TrimPrefix(adminKey, "Bearer ")
 		}
 
-		if adminKey != cfg.AdminKey {
+		if adminKey == "" {
+			c.JSON(http.StatusUnauthorized, model.NewAPIError("invalid_request_error", "Invalid admin key"))
+			c.Abort()
+			return
+		}
+
+		expected := sha256.Sum256([]byte(cfg.AdminKey))
+		got := sha256.Sum256([]byte(adminKey))
+		if subtle.ConstantTimeCompare(expected[:], got[:]) != 1 {
 			c.JSON(http.StatusUnauthorized, model.NewAPIError("invalid_request_error", "Invalid admin key"))
 			c.Abort()
 			return
@@ -127,17 +139,11 @@ func RequestIDMiddleware() gin.HandlerFunc {
 }
 
 func generateRequestID() string {
-	// Simple implementation; use UUID in production
-	return "req_" + randomString(16)
-}
-
-func randomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letters[i%len(letters)]
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "req_fallback"
 	}
-	return string(b)
+	return "req_" + hex.EncodeToString(b)
 }
 
 // WithAPIKey adds API key info to context

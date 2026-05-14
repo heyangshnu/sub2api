@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -115,12 +116,26 @@ func (h *PaymentHandler) HandleWebhook(c *gin.Context) {
 			return
 		}
 
-		amount, err := strconv.ParseFloat(amountStr, 64)
+		metaAmount, err := strconv.ParseFloat(amountStr, 64)
 		if err != nil {
 			log.Printf("Invalid amount in metadata: %s", amountStr)
 			c.JSON(http.StatusOK, gin.H{"received": true})
 			return
 		}
+
+		if session.AmountTotal <= 0 {
+			log.Printf("Stripe session %s has non-positive AmountTotal: %d", session.ID, session.AmountTotal)
+			c.JSON(http.StatusOK, gin.H{"received": true})
+			return
+		}
+		stripeUSD := float64(session.AmountTotal) / 100.0
+		if math.Abs(metaAmount-stripeUSD) > 0.02 {
+			log.Printf("stripe webhook: amount mismatch session=%s metadata_usd=%.4f stripe_usd=%.4f (cents=%d)",
+				session.ID, metaAmount, stripeUSD, session.AmountTotal)
+			c.JSON(http.StatusOK, gin.H{"received": true, "error": "amount_mismatch"})
+			return
+		}
+		amount := stripeUSD
 
 		// Topup the balance
 		note := "Stripe payment: " + session.ID

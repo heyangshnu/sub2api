@@ -79,7 +79,20 @@ curl http://localhost:3000/v1/usage \
 | POST | /admin/keys | 创建 API Key | Admin Key |
 | GET | /admin/keys | 列出所有 Key | Admin Key |
 | POST | /admin/keys/:id/topup | 充值 | Admin Key |
-| GET | /health | 健康检查 | 无 |
+| GET | /health | 详细健康（Redis/SQLite ping） | 无 |
+| GET | /health/ready | 就绪探针（Redis 异常时 503） | 无 |
+| GET | /metrics | OpenMetrics 文本指标 | 无 |
+| GET | /dashboard/usage-daily | 按天消费聚合（JWT，需 `key_id`） | JWT |
+| GET | /dashboard/request-logs | 请求审计日志（JWT，需 `key_id`） | JWT |
+
+## 可观测与对账
+
+- 抓取指标：`curl -sS http://127.0.0.1:3000/metrics`（详见仓库 `docs/operations/OBSERVABILITY.md`）。
+- 离线抽样对账（需 `REDIS_URL` 与可选 `./data/sub2api.db`）：
+
+```bash
+go run ./cmd/sub2api-check -key sk-sub2api-你的原始Key
+```
 
 ## 支持的模型
 
@@ -111,7 +124,8 @@ curl http://localhost:3000/v1/usage \
 
 ```
 sub2api-go/
-├── cmd/server/          # 入口
+├── cmd/server/          # HTTP 服务入口
+├── cmd/sub2api-check/ # Redis 侧余额与流水抽样检查
 ├── internal/
 │   ├── config/          # 配置管理
 │   ├── handler/         # HTTP 处理器
@@ -127,7 +141,7 @@ sub2api-go/
 ## 开发路线
 
 - [x] Phase 1: MVP - 单供应商可商用
-- [ ] Phase 2: Redis 原子扣费 + DB 持久化
-- [ ] Phase 3: 用户自助 Dashboard
-- [ ] Phase 4: Stripe 支付集成
-- [ ] Phase 5: 多节点 + 监控告警
+- [x] Phase 2: Redis 原子扣费 + SQLite 用户数据
+- [x] Phase 3: 用户自助 Dashboard（用量图、请求日志、健康与指标）
+- [x] Phase 4: Stripe 支付集成（测试模式；生产需 Live Key）
+- [ ] Phase 5: 多节点 + 托管 Redis + PG 迁移（见 `docs/operations/SCALING.md`）

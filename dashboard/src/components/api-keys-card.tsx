@@ -39,7 +39,7 @@ function formatBalance(balance: number) {
 }
 
 export function ApiKeysCard() {
-  const { apiKeys, apiKey: currentApiKey, refreshKeys } = useAuth();
+  const { apiKeys, apiKey: currentApiKey, refreshKeys, bindUsageApiKey } = useAuth();
   const [showKey, setShowKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -74,6 +74,7 @@ export function ApiKeysCard() {
       setNewKey(result.key);
       setCreatePassword("");
       setCreateName("");
+      bindUsageApiKey(result.key);
       await refreshKeys();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create key");
@@ -131,10 +132,10 @@ export function ApiKeysCard() {
   // Login with API key only (no JWT): show limited view
   if (currentApiKey && apiKeys.length === 0) {
     return (
-      <Card>
+      <Card className="border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50">
         <CardHeader>
-          <CardTitle>Current API Key</CardTitle>
-          <CardDescription>You are logged in with this API Key</CardDescription>
+          <CardTitle className="text-slate-900">Current API Key</CardTitle>
+          <CardDescription className="text-slate-600">You are logged in with this API Key</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
@@ -165,12 +166,14 @@ export function ApiKeysCard() {
   }
 
   return (
-    <Card>
+    <Card className="border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50">
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle>API Keys</CardTitle>
-            <CardDescription>Manage your API Keys</CardDescription>
+            <CardTitle className="text-slate-900">API Keys</CardTitle>
+            <CardDescription className="text-slate-600">
+              创建 Key 后可在右上角充值，并用于 OpenAI 兼容接口；创建成功后将自动绑定到本控制台以展示用量。
+            </CardDescription>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => refreshKeys()}>

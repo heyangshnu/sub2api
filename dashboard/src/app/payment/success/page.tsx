@@ -54,7 +54,7 @@ function PaymentSuccessContent() {
   };
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border border-slate-200/90 bg-white/80 text-slate-900 shadow-xl shadow-slate-200/40 backdrop-blur-2xl ring-1 ring-slate-200/50">
       <CardHeader className="text-center">
         {status === "loading" && (
           <>
@@ -118,9 +118,9 @@ function PaymentSuccessContent() {
 
 export default function PaymentSuccess() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center p-4">
       <Suspense fallback={
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md border border-slate-200/90 bg-white/80 text-slate-900 backdrop-blur-xl ring-1 ring-slate-200/50 shadow-lg">
           <CardHeader className="text-center">
             <CardTitle>加载中...</CardTitle>
           </CardHeader>

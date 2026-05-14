@@ -1,6 +1,48 @@
 // API Client for Sub2API Backend
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+/** Strip trailing slashes and optional `/auth` suffix so paths like `/auth/login` resolve once. */
+function normalizeApiBase(raw: string): string {
+  let s = raw.trim().replace(/\/+$/, "");
+  if (s.toLowerCase().endsWith("/auth")) {
+    s = s.slice(0, -"/auth".length).replace(/\/+$/, "");
+  }
+  return s;
+}
+
+const API_BASE = normalizeApiBase(
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+);
+
+function httpMessageFromBody(text: string, status: number): string {
+  const trimmed = text.trim();
+  if (!trimmed) return `Request failed (${status})`;
+  try {
+    const err = JSON.parse(trimmed) as {
+      error?: { message?: string; type?: string } | string;
+      message?: string;
+    };
+    if (typeof err.error === "string") return err.error;
+    if (err.error && typeof err.error === "object" && err.error.message) {
+      return err.error.message;
+    }
+    if (err.message) return err.message;
+  } catch {
+    /* Gin 404 等为纯文本 "404 page not found"，非 JSON */
+  }
+  return trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed;
+}
+
+function parseJsonBody<T>(text: string, what: string): T {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error(`${what}: empty response`);
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error(
+      `${what}: ${trimmed.slice(0, 120)}${trimmed.length > 120 ? "…" : ""}`
+    );
+  }
+}
 
 // ==================== Auth Types ====================
 
@@ -13,9 +55,9 @@ export interface User {
 }
 
 export interface AuthResponse {
-  token: string;
-  user: User;
-  api_key?: string;  // First registration returns API key
+  token?: string;
+  user?: User;
+  api_key?: string; // 已不再在注册时返回；创建 Key 接口返回
 }
 
 export interface APIKey {
@@ -70,6 +112,36 @@ export interface Model {
 export interface ModelsResponse {
   object: string;
   data: Model[];
+}
+
+export interface DailyUsagePoint {
+  date: string;
+  total_consumed: number;
+  request_count: number;
+}
+
+export interface UsageDailyResponse {
+  key_id: string;
+  days: number;
+  points: DailyUsagePoint[];
+}
+
+export interface RequestLogEntry {
+  id: string;
+  key_id: string;
+  request_id: string;
+  model: string;
+  stream: boolean;
+  outcome: string;
+  latency_ms: number;
+  created_at: string;
+}
+
+export interface RequestLogsResponse {
+  logs: RequestLogEntry[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface APIError {
@@ -131,12 +203,12 @@ class APIClient {
       },
     });
 
+    const text = await response.text();
     if (!response.ok) {
-      const error: APIError = await response.json();
-      throw new Error(error.error?.message || "Request failed");
+      throw new Error(httpMessageFromBody(text, response.status));
     }
 
-    return response.json();
+    return parseJsonBody<T>(text, "Invalid JSON");
   }
 
   // Request with JWT auth (for dashboard endpoints)
@@ -158,24 +230,48 @@ class APIClient {
       headers,
     });
 
+    const text = await response.text();
     if (!response.ok) {
-      const error = await response.json();
-      // Handle both { error: "message" } and { error: { message: "xxx" } } formats
-      const errorMessage = typeof error.error === "string" 
-        ? error.error 
-        : error.error?.message || error.message || "Request failed";
-      throw new Error(errorMessage);
+      throw new Error(httpMessageFromBody(text, response.status));
     }
 
-    return response.json();
+    return parseJsonBody<T>(text, "Invalid JSON");
   }
 
   // ==================== Auth Endpoints ====================
 
-  async register(email: string, password: string, name?: string, inviteCode?: string): Promise<AuthResponse> {
+  // GET /auth/config — public; no JWT
+  async getAuthConfig(): Promise<{
+    email_verify_enabled: boolean;
+    invite_required?: boolean;
+  }> {
+    const response = await fetch(`${API_BASE}/auth/config`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(httpMessageFromBody(text, response.status));
+    }
+    return parseJsonBody(text, "Invalid auth config JSON");
+  }
+
+  async register(
+    email: string,
+    password: string,
+    name?: string,
+    inviteCode?: string,
+    verificationCode?: string
+  ): Promise<AuthResponse> {
     return this.authRequest<AuthResponse>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password, name, invite_code: inviteCode }),
+      body: JSON.stringify({
+        email,
+        password,
+        name,
+        invite_code: inviteCode?.trim() || undefined,
+        verification_code: verificationCode || undefined,
+      }),
     });
   }
 
@@ -183,6 +279,35 @@ class APIClient {
     return this.authRequest<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    });
+  }
+
+  async sendRegisterCode(email: string): Promise<{ message: string }> {
+    return this.authRequest<{ message: string }>("/auth/send-register-code", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async sendResetPasswordCode(email: string): Promise<{ message: string }> {
+    return this.authRequest<{ message: string }>("/auth/send-reset-password-code", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(
+    email: string,
+    verificationCode: string,
+    newPassword: string
+  ): Promise<{ message: string }> {
+    return this.authRequest<{ message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({
+        email,
+        verification_code: verificationCode,
+        new_password: newPassword,
+      }),
     });
   }
 
@@ -231,6 +356,24 @@ class APIClient {
     return this.authRequest(`/dashboard/keys/${keyId}`, {
       method: "DELETE",
     });
+  }
+
+  async getUsageDaily(keyId: string, days = 14): Promise<UsageDailyResponse> {
+    const q = new URLSearchParams({ key_id: keyId, days: String(days) });
+    return this.authRequest<UsageDailyResponse>(`/dashboard/usage-daily?${q.toString()}`);
+  }
+
+  async getRequestLogs(
+    keyId: string,
+    limit = 20,
+    offset = 0
+  ): Promise<RequestLogsResponse> {
+    const q = new URLSearchParams({
+      key_id: keyId,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    return this.authRequest<RequestLogsResponse>(`/dashboard/request-logs?${q.toString()}`);
   }
 
   // ==================== API Key Endpoints ====================

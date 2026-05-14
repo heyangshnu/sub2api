@@ -70,20 +70,40 @@ type StreamChunk struct {
 // ==================== User Types ====================
 
 type User struct {
-	ID           string    `json:"id" db:"id"`
-	Email        string    `json:"email" db:"email"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	Name         string    `json:"name" db:"name"`
-	Status       string    `json:"status" db:"status"` // active, disabled
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+	ID                    string     `json:"id" db:"id"`
+	Email                 string     `json:"email" db:"email"`
+	PasswordHash          string     `json:"-" db:"password_hash"`
+	Name                  string     `json:"name" db:"name"`
+	Status                string     `json:"status" db:"status"` // pending_verification, active, disabled
+	EmailVerified         bool       `json:"email_verified" db:"email_verified"`
+	EmailVerifyTokenHash  string     `json:"-" db:"email_verify_token_hash"`
+	EmailVerifyExpiresAt  *time.Time `json:"-" db:"email_verify_expires_at"`
+	CreatedAt             time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 type RegisterRequest struct {
-	Email      string `json:"email" binding:"required,email"`
-	Password   string `json:"password" binding:"required,min=6"`
-	Name       string `json:"name,omitempty"`
-	InviteCode string `json:"invite_code,omitempty"`
+	Email              string `json:"email" binding:"required,email"`
+	Password           string `json:"password" binding:"required,min=6"`
+	Name               string `json:"name,omitempty"`
+	InviteCode         string `json:"invite_code,omitempty"`
+	VerificationCode   string `json:"verification_code,omitempty"` // required when server has EMAIL_VERIFY_ENABLED=true
+}
+
+type SendRegisterCodeRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// SendResetPasswordCodeRequest is POST /auth/send-reset-password-code (same shape as register code).
+type SendResetPasswordCodeRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResetPasswordRequest is POST /auth/reset-password after email OTP verification.
+type ResetPasswordRequest struct {
+	Email            string `json:"email" binding:"required,email"`
+	VerificationCode string `json:"verification_code" binding:"required"`
+	NewPassword      string `json:"new_password" binding:"required,min=6"`
 }
 
 type LoginRequest struct {
@@ -92,8 +112,8 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token  string `json:"token"`
-	User   *User  `json:"user"`
+	Token  string `json:"token,omitempty"`
+	User   *User  `json:"user,omitempty"`
 	APIKey string `json:"api_key,omitempty"` // 首次注册时返回
 }
 
@@ -131,6 +151,25 @@ type Transaction struct {
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 }
 
+// DailyUsagePoint aggregates per-day consume amounts (UTC date) for Dashboard charts.
+type DailyUsagePoint struct {
+	Date          string  `json:"date"`           // YYYY-MM-DD UTC
+	TotalConsumed float64 `json:"total_consumed"` // USD
+	RequestCount  int     `json:"request_count"`
+}
+
+// RequestLogEntry is a lightweight chat audit row (no prompt / response body).
+type RequestLogEntry struct {
+	ID        string    `json:"id"`
+	KeyID     string    `json:"key_id"`
+	RequestID string    `json:"request_id"`
+	Model     string    `json:"model"`
+	Stream    bool      `json:"stream"`
+	Outcome   string    `json:"outcome"` // success, insufficient_balance, upstream_error, client_error, stream_error, internal_error
+	LatencyMs int64     `json:"latency_ms"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // ==================== Model Pricing ====================
 
 type ModelPricing struct {
@@ -147,7 +186,15 @@ var DefaultPricing = map[string]ModelPricing{
 	"claude-3-opus-20240229":     {Model: "claude-3-opus-20240229", Provider: "anthropic", InputPricePerK: 0.015, OutputPricePerK: 0.075},
 	"gpt-4o":                     {Model: "gpt-4o", Provider: "openai", InputPricePerK: 0.005, OutputPricePerK: 0.015},
 	"gpt-4o-mini":                {Model: "gpt-4o-mini", Provider: "openai", InputPricePerK: 0.00015, OutputPricePerK: 0.0006},
+	"gpt-4-turbo":                {Model: "gpt-4-turbo", Provider: "openai", InputPricePerK: 0.01, OutputPricePerK: 0.03},
 	"deepseek-chat":              {Model: "deepseek-chat", Provider: "deepseek", InputPricePerK: 0.00014, OutputPricePerK: 0.00028},
+	"deepseek-coder":             {Model: "deepseek-coder", Provider: "deepseek", InputPricePerK: 0.00014, OutputPricePerK: 0.00028},
+}
+
+// HasDefaultPricing reports whether the model has an explicit row in DefaultPricing (strict billing catalog).
+func HasDefaultPricing(modelName string) bool {
+	_, ok := DefaultPricing[modelName]
+	return ok
 }
 
 // ==================== Admin Request Types ====================

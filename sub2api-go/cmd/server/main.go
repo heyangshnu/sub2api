@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"sub2api-go/internal/middleware"
 	"sub2api-go/internal/service"
 	"sub2api-go/internal/store"
+	"sub2api-go/internal/telemetry"
 )
 
 func main() {
@@ -25,6 +27,9 @@ func main() {
 
 	// Load configuration
 	cfg := config.Load()
+	if err := cfg.ValidateProductionSecrets(); err != nil {
+		log.Fatalf("Invalid production configuration: %v", err)
+	}
 
 	// Initialize stores
 	var dataStore store.Store
@@ -40,8 +45,14 @@ func main() {
 	}
 
 	// Try to connect to Redis
-	redisStore, err = store.NewRedisStore("redis://localhost:6379", sqliteStore)
+	redisStore, err = store.NewRedisStore(cfg.RedisURL, sqliteStore)
 	if err != nil {
+		if cfg.IsProduction() {
+			log.Fatalf("Redis required in production (set REDIS_URL and ensure Redis is reachable): %v", err)
+		}
+		if !cfg.AllowMemoryStore {
+			log.Fatalf("Redis unavailable and ALLOW_MEMORY_STORE=false: %v", err)
+		}
 		log.Printf("Redis not available: %v, using memory store", err)
 		dataStore = store.NewMemoryStore()
 		storeType = "memory"
@@ -75,11 +86,21 @@ func main() {
 	}
 
 	// Initialize handlers
-	chatHandler := handler.NewChatHandler(providerService, billingService, dataStore)
+	chatHandler := handler.NewChatHandler(providerService, billingService, dataStore, cfg)
 	adminHandler := handler.NewAdminHandler(dataStore)
 	userHandler := handler.NewUserHandler(dataStore)
 	paymentHandler := handler.NewPaymentHandler(stripeService, dataStore)
-	authHandler := handler.NewAuthHandler(dataStore, cfg.JWTSecret, cfg.InviteCode)
+	authHandler := handler.NewAuthHandler(
+		dataStore,
+		cfg.JWTSecret,
+		cfg.InviteCode,
+		cfg.EmailVerifyEnabled,
+		cfg.SMTPHost,
+		cfg.SMTPPort,
+		cfg.SMTPUsername,
+		cfg.SMTPPassword,
+		cfg.SMTPFrom,
+	)
 	dashboardHandler := handler.NewDashboardHandler(dataStore)
 
 	// Setup Gin
@@ -88,21 +109,54 @@ func main() {
 	}
 
 	r := gin.New()
+	if len(cfg.TrustedProxies) > 0 {
+		if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+			log.Fatalf("Invalid TRUSTED_PROXIES: %v", err)
+		}
+		log.Printf("Trusted proxies (Gin): %v", cfg.TrustedProxies)
+	}
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.RequestIDMiddleware())
-
-	// Health endpoint
-	r.GET("/health", func(c *gin.Context) {
-		handler.HealthHandlerWithStore(c, storeType)
+	r.Use(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if p == "/metrics" || p == "/health" || p == "/health/ready" || strings.HasPrefix(p, "/webhook/") {
+			c.Next()
+			return
+		}
+		telemetry.IncHTTPRequest()
+		c.Next()
 	})
+
+	healthDeps := handler.HealthDeps{StoreType: storeType}
+	if redisStore != nil {
+		healthDeps.Redis = redisStore.Client()
+	}
+	if sqliteStore != nil {
+		healthDeps.SQLite = sqliteStore.DB()
+	}
+
+	r.GET("/health", func(c *gin.Context) {
+		handler.DetailedHealth(c, healthDeps)
+	})
+	r.GET("/health/ready", func(c *gin.Context) {
+		handler.ReadyHealth(c, healthDeps)
+	})
+	r.GET("/metrics", gin.WrapH(telemetry.MetricsHandler()))
 
 	// Auth endpoints (no auth required)
 	auth := r.Group("/auth")
+	if redisStore != nil {
+		auth.Use(middleware.AuthRateLimitMiddleware(redisStore.Client()))
+	}
 	{
+		auth.GET("/config", authHandler.AuthConfig)
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
+		auth.POST("/send-register-code", authHandler.SendRegisterCode)
+		auth.POST("/send-reset-password-code", authHandler.SendResetPasswordCode)
+		auth.POST("/reset-password", authHandler.ResetPassword)
 	}
 
 	// User dashboard endpoints (require JWT auth)
@@ -123,16 +177,18 @@ func main() {
 		dashboard.POST("/keys", dashboardHandler.CreateKey)
 		dashboard.PATCH("/keys/:id", dashboardHandler.UpdateKeySettings)
 		dashboard.DELETE("/keys/:id", dashboardHandler.DeleteKey)
+		dashboard.GET("/usage-daily", dashboardHandler.GetUsageDaily)
+		dashboard.GET("/request-logs", dashboardHandler.ListRequestLogs)
 	}
 
 	// OpenAI compatible endpoints (require API key auth + rate limit + IP whitelist)
 	v1 := r.Group("/v1")
 	v1.Use(middleware.AuthMiddleware(dataStore))
-	// 频次限制和 IP 白名单（仅在 Redis 可用时启用）
+	// 频次限制和 IP 白名单（Redis 不可用时中间件内部跳过计数，仅 IP 白名单仍生效）
 	if redisStore != nil {
-		v1.Use(middleware.RateLimitMiddleware(redisStore.Client()))
+		v1.Use(middleware.RateLimitMiddleware(redisStore.Client(), cfg.RateLimitRedisFailOpen))
 	} else {
-		v1.Use(middleware.RateLimitMiddleware(nil))
+		v1.Use(middleware.RateLimitMiddleware(nil, cfg.RateLimitRedisFailOpen))
 	}
 	{
 		v1.POST("/chat/completions", chatHandler.ChatCompletions)
@@ -162,6 +218,10 @@ func main() {
 	log.Println("  Sub2API Server Starting")
 	log.Println("===========================================")
 	log.Printf("  Port:       %s", cfg.Port)
+	log.Printf("  Redis URL:  %s", cfg.RedisURL)
+	log.Printf("  Memory fallback: %v (disallowed in production without Redis)", cfg.AllowMemoryStore)
+	log.Printf("  Rate limit Redis fail-open: %v", cfg.RateLimitRedisFailOpen)
+	log.Printf("  Allow unknown model pricing: %v", cfg.AllowUnknownModelPricing)
 	log.Printf("  Store:      %s", storeType)
 	log.Printf("  Providers:  %d configured", len(cfg.Providers))
 	for _, p := range cfg.Providers {
@@ -179,7 +239,11 @@ func main() {
 	log.Println("    GET  /admin/keys           - List API keys")
 	log.Println("    POST /admin/keys/:id/topup - Topup balance")
 	log.Println("    POST /webhook/stripe       - Stripe webhook")
-	log.Println("    GET  /health               - Health check")
+	log.Println("    GET  /health               - Health (JSON + dependency checks)")
+	log.Println("    GET  /health/ready         - Readiness (503 if Redis down)")
+	log.Println("    GET  /metrics              - OpenMetrics text (Prometheus scrape)")
+	log.Println("    GET  /dashboard/usage-daily   - Daily consume aggregates (JWT)")
+	log.Println("    GET  /dashboard/request-logs  - Recent chat audit rows (JWT)")
 	log.Println("===========================================")
 
 	// Graceful shutdown

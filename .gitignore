@@ -1,8 +1,12 @@
 # ============== 敏感信息 ==============
+# 任意目录下的本地环境文件（勿提交真实密钥）
 .env
 .env.*
+# 允许提交无密钥的示例模板（否则 .env.* 会误伤 .env.example）
+!.env.example
+!**/.env.example
 *.env
-sub2api-go/.env
+!*.env.example
 
 # ============== 数据库 ==============
 *.db
@@ -10,12 +14,20 @@ sub2api-go/.env
 *.db-wal
 dump.rdb
 
+# ============== 常见密钥 / 证书私钥 ==============
+id_rsa
+id_ed25519
+*.p12
+*.pfx
+
 # ============== 依赖目录 ==============
 node_modules/
 dashboard/node_modules/
 
 # ============== 构建产物 ==============
 sub2api-go/bin/
+sub2api-go/server
+sub2api-go/server.log
 dashboard/.next/
 dashboard/out/
 *.tar.gz
@@ -34,4 +46,5 @@ dashboard/out/
 .workbuddy/
 
 # ============== 交接文档（含敏感信息）==============
+# 整文件忽略：生产 IP、测试账号等不会进仓库。若需版本化请先脱敏再移除此行。
 HANDOVER.md

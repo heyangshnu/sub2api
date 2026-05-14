@@ -5,9 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"sub2api-go/internal/model"
 )
 
@@ -22,8 +25,17 @@ type MemoryStore struct {
 	keys         map[string]*model.APIKey    // keyHash -> APIKey
 	users        map[string]*model.User      // email -> User
 	usersById    map[string]*model.User      // id -> User
-	transactions []model.Transaction
+	registerOTP        map[string]*memRegisterOTP // normalized email -> pending registration code
+	resetPasswordOTP   map[string]*memRegisterOTP // normalized email -> pending reset code
+	requestLogs        map[string][]*model.RequestLogEntry // keyID -> newest first
+	transactions       []model.Transaction
 	keyCounter   int
+}
+
+type memRegisterOTP struct {
+	hash      string
+	expiresAt time.Time
+	createdAt time.Time
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -31,6 +43,9 @@ func NewMemoryStore() *MemoryStore {
 		keys:         make(map[string]*model.APIKey),
 		users:        make(map[string]*model.User),
 		usersById:    make(map[string]*model.User),
+		registerOTP:       make(map[string]*memRegisterOTP),
+		resetPasswordOTP:  make(map[string]*memRegisterOTP),
+		requestLogs:       make(map[string][]*model.RequestLogEntry),
 		transactions: make([]model.Transaction, 0),
 	}
 }
@@ -285,10 +300,12 @@ func (s *MemoryStore) UpdateKeySettings(ctx context.Context, keyHash string, ipW
 func (s *MemoryStore) DeleteKey(ctx context.Context, keyHash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
-	if _, exists := s.keys[keyHash]; !exists {
+
+	key, exists := s.keys[keyHash]
+	if !exists {
 		return ErrKeyNotFound
 	}
+	delete(s.requestLogs, key.ID)
 	delete(s.keys, keyHash)
 	return nil
 }
@@ -412,4 +429,224 @@ func (s *MemoryStore) GetUserByID(ctx context.Context, userID string) (*model.Us
 		return nil, ErrUserNotFound
 	}
 	return user, nil
+}
+
+func (s *MemoryStore) UpdateUser(ctx context.Context, user *model.User) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.usersById[user.ID]; !exists {
+		return ErrUserNotFound
+	}
+	s.users[user.Email] = user
+	s.usersById[user.ID] = user
+	return nil
+}
+
+func normalizeRegisterEmailMem(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func (s *MemoryStore) SaveRegisterOTP(ctx context.Context, email, codeHash string, expiresAt, createdAt time.Time) error {
+	em := normalizeRegisterEmailMem(email)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if prev, ok := s.registerOTP[em]; ok {
+		if time.Since(prev.createdAt) < 60*time.Second {
+			return ErrRegisterOTPCooldown
+		}
+	}
+	s.registerOTP[em] = &memRegisterOTP{
+		hash:      codeHash,
+		expiresAt: expiresAt,
+		createdAt: createdAt,
+	}
+	return nil
+}
+
+func (s *MemoryStore) ConsumeRegisterOTP(ctx context.Context, email, plainCode string) error {
+	em := normalizeRegisterEmailMem(email)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ent, ok := s.registerOTP[em]
+	if !ok {
+		return ErrRegisterOTPInvalid
+	}
+	if time.Now().After(ent.expiresAt) {
+		delete(s.registerOTP, em)
+		return ErrRegisterOTPInvalid
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(ent.hash), []byte(strings.TrimSpace(plainCode))); err != nil {
+		return ErrRegisterOTPInvalid
+	}
+	delete(s.registerOTP, em)
+	return nil
+}
+
+func (s *MemoryStore) SaveResetPasswordOTP(ctx context.Context, email, codeHash string, expiresAt, createdAt time.Time) error {
+	em := normalizeRegisterEmailMem(email)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if prev, ok := s.resetPasswordOTP[em]; ok {
+		if time.Since(prev.createdAt) < 60*time.Second {
+			return ErrResetPasswordOTPCooldown
+		}
+	}
+	s.resetPasswordOTP[em] = &memRegisterOTP{
+		hash:      codeHash,
+		expiresAt: expiresAt,
+		createdAt: createdAt,
+	}
+	return nil
+}
+
+func (s *MemoryStore) ConsumeResetPasswordOTP(ctx context.Context, email, plainCode string) error {
+	em := normalizeRegisterEmailMem(email)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ent, ok := s.resetPasswordOTP[em]
+	if !ok {
+		return ErrResetPasswordOTPInvalid
+	}
+	if time.Now().After(ent.expiresAt) {
+		delete(s.resetPasswordOTP, em)
+		return ErrResetPasswordOTPInvalid
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(ent.hash), []byte(strings.TrimSpace(plainCode))); err != nil {
+		return ErrResetPasswordOTPInvalid
+	}
+	delete(s.resetPasswordOTP, em)
+	return nil
+}
+
+const memMaxRequestLogs = 200
+
+func (s *MemoryStore) AggregateConsumeByDay(ctx context.Context, keyHash string, days int) ([]model.DailyUsagePoint, error) {
+	if days < 1 {
+		days = 14
+	}
+	if days > 90 {
+		days = 90
+	}
+	s.mu.RLock()
+	key, ok := s.keys[keyHash]
+	if !ok {
+		s.mu.RUnlock()
+		return nil, ErrKeyNotFound
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -days).Truncate(24 * time.Hour)
+	byDay := make(map[string]*model.DailyUsagePoint)
+	for _, tx := range s.transactions {
+		if tx.KeyID == key.ID && tx.Type == "consume" && !tx.CreatedAt.UTC().Before(cutoff) {
+			d := tx.CreatedAt.UTC().Format("2006-01-02")
+			if byDay[d] == nil {
+				byDay[d] = &model.DailyUsagePoint{Date: d}
+			}
+			byDay[d].TotalConsumed += tx.Amount
+			byDay[d].RequestCount++
+		}
+	}
+	s.mu.RUnlock()
+	dates := make([]string, 0, len(byDay))
+	for d := range byDay {
+		dates = append(dates, d)
+	}
+	sort.Strings(dates)
+	out := make([]model.DailyUsagePoint, 0, len(dates))
+	for _, d := range dates {
+		out = append(out, *byDay[d])
+	}
+	return out, nil
+}
+
+func (s *MemoryStore) AppendRequestLog(ctx context.Context, entry *model.RequestLogEntry) error {
+	if entry == nil || entry.KeyID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if entry.ID == "" {
+		entry.ID = generateTxID()
+	}
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = time.Now().UTC()
+	}
+	cp := *entry
+	list := s.requestLogs[entry.KeyID]
+	next := append([]*model.RequestLogEntry{&cp}, list...)
+	if len(next) > memMaxRequestLogs {
+		next = next[:memMaxRequestLogs]
+	}
+	s.requestLogs[entry.KeyID] = next
+	return nil
+}
+
+func (s *MemoryStore) ListRequestLogs(ctx context.Context, keyID string, limit, offset int) ([]*model.RequestLogEntry, int, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	list := s.requestLogs[keyID]
+	total := len(list)
+	if offset >= total {
+		return []*model.RequestLogEntry{}, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	slice := list[offset:end]
+	out := make([]*model.RequestLogEntry, 0, len(slice))
+	for _, e := range slice {
+		if e == nil {
+			continue
+		}
+		cp := *e
+		out = append(out, &cp)
+	}
+	return out, total, nil
+}
+
+// DeleteUserByEmail removes user, keys, txs, and registration / reset-password OTP (memory store only).
+func (s *MemoryStore) DeleteUserByEmail(ctx context.Context, email string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.registerOTP, normalizeRegisterEmailMem(email))
+	delete(s.resetPasswordOTP, normalizeRegisterEmailMem(email))
+
+	u, ok := s.users[email]
+	if !ok {
+		return nil
+	}
+	userID := u.ID
+
+	keyIDs := make(map[string]struct{})
+	for kh, k := range s.keys {
+		if k != nil && k.UserID == userID {
+			keyIDs[k.ID] = struct{}{}
+			delete(s.requestLogs, k.ID)
+			delete(s.keys, kh)
+		}
+	}
+
+	out := s.transactions[:0]
+	for _, tx := range s.transactions {
+		if _, drop := keyIDs[tx.KeyID]; !drop {
+			out = append(out, tx)
+		}
+	}
+	s.transactions = out
+
+	delete(s.users, email)
+	delete(s.usersById, userID)
+	return nil
 }

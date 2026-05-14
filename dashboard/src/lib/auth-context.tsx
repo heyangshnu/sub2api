@@ -18,10 +18,18 @@ interface AuthContextType {
   
   // JWT login/register
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (email: string, password: string, name?: string, inviteCode?: string) => Promise<{ success: boolean; error?: string; apiKey?: string }>;
+  register: (
+    email: string,
+    password: string,
+    name?: string,
+    inviteCode?: string,
+    verificationCode?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   
   logout: () => void;
   refreshKeys: () => Promise<void>;
+  /** After creating an API key, attach it for /v1/* usage & balance queries */
+  bindUsageApiKey: (rawKey: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -112,11 +120,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginWithEmail = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await apiClient.login(email, password);
-      
+
+      if (!response.token || !response.user) {
+        return { success: false, error: "Login did not return a valid session" };
+      }
+
       // Save token and user
       localStorage.setItem(JWT_TOKEN_STORAGE_KEY, response.token);
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.user));
-      
+
       apiClient.setToken(response.token);
       setUser(response.user);
       setIsAuthenticated(true);
@@ -136,37 +148,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Register new account
-  const register = async (email: string, password: string, name?: string, inviteCode?: string): Promise<{ success: boolean; error?: string; apiKey?: string }> => {
+  // Register: creates account on server but does not open a session — user must log in with email/password.
+  const register = async (
+    email: string,
+    password: string,
+    name?: string,
+    inviteCode?: string,
+    verificationCode?: string
+  ): Promise<{ success: boolean; error?: string; apiKey?: string }> => {
     try {
-      const response = await apiClient.register(email, password, name, inviteCode);
-      
-      // Save token and user
-      localStorage.setItem(JWT_TOKEN_STORAGE_KEY, response.token);
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.user));
-      
-      apiClient.setToken(response.token);
-      setUser(response.user);
-      setIsAuthenticated(true);
-      setAuthMode("jwt");
-      
-      // Registration returns the API key
-      if (response.api_key) {
-        setApiKey(response.api_key);
-        // Also save API key for usage queries
-        localStorage.setItem(API_KEY_STORAGE_KEY, response.api_key);
-        apiClient.setApiKey(response.api_key);
+      const response = await apiClient.register(
+        email,
+        password,
+        name,
+        inviteCode,
+        verificationCode
+      );
+
+      if (!response.user) {
+        return { success: false, error: "Registration did not return user info" };
       }
-      
-      // Load user's API keys
-      try {
-        const { keys } = await apiClient.getMyKeys();
-        setApiKeys(keys);
-      } catch {
-        // Ignore
-      }
-      
-      return { success: true, apiKey: response.api_key };
+
+      return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Registration failed" };
     }
@@ -195,6 +198,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const bindUsageApiKey = (rawKey: string) => {
+    localStorage.setItem(API_KEY_STORAGE_KEY, rawKey);
+    apiClient.setApiKey(rawKey);
+    setApiKey(rawKey);
+  };
+
   return (
     <AuthContext.Provider value={{
       isAuthenticated,
@@ -208,6 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       refreshKeys,
+      bindUsageApiKey,
     }}>
       {children}
     </AuthContext.Provider>
