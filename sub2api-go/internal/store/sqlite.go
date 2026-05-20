@@ -137,6 +137,13 @@ func (s *SQLiteStore) migrate() error {
 		`ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN email_verify_token_hash TEXT`,
 		`ALTER TABLE users ADD COLUMN email_verify_expires_at DATETIME`,
+		`ALTER TABLE users ADD COLUMN balance REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN has_paid INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN first_paid_at DATETIME`,
+		`ALTER TABLE users ADD COLUMN last_monthly_grant_month TEXT`,
+		`ALTER TABLE api_keys ADD COLUMN spend_limit REAL`,
+		`ALTER TABLE api_keys ADD COLUMN spent_total REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE transactions ADD COLUMN user_id TEXT`,
 	}
 	for _, stmt := range alterStmts {
 		if _, err := s.db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
@@ -487,6 +494,28 @@ func (s *SQLiteStore) UpdateUser(ctx context.Context, user *model.User) error {
 		user.EmailVerified,
 		user.EmailVerifyTokenHash,
 		user.EmailVerifyExpiresAt,
+		user.UpdatedAt,
+		user.ID,
+	)
+	return err
+}
+
+// SaveUserAccount persists account wallet fields to SQLite (Redis remains source of truth at runtime).
+func (s *SQLiteStore) SaveUserAccount(ctx context.Context, user *model.User) error {
+	query := `
+		UPDATE users
+		SET balance = ?, has_paid = ?, first_paid_at = ?, last_monthly_grant_month = ?, updated_at = ?
+		WHERE id = ?
+	`
+	hasPaid := 0
+	if user.HasPaid {
+		hasPaid = 1
+	}
+	_, err := s.db.ExecContext(ctx, query,
+		user.Balance,
+		hasPaid,
+		user.FirstPaidAt,
+		user.LastMonthlyGrantMonth,
 		user.UpdatedAt,
 		user.ID,
 	)

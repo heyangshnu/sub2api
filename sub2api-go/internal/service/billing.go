@@ -95,10 +95,51 @@ func (s *BillingService) ValidateBalance(ctx context.Context, keyHash string, es
 	if err != nil {
 		return err
 	}
-	
+
 	if balance < estimatedCost {
 		return errors.New("insufficient balance")
 	}
-	
+
 	return nil
+}
+
+// PreDeductForAPI checks key spend limit then pre-deducts from user account (USD).
+func (s *BillingService) PreDeductForAPI(ctx context.Context, key *model.APIKey, amount float64) error {
+	if key == nil {
+		return errors.New("missing api key")
+	}
+	if err := s.store.CheckKeySpendLimit(ctx, key.ID, key.SpendLimit, amount); err != nil {
+		return err
+	}
+	return s.store.AccountPreDeduct(ctx, key.UserID, amount)
+}
+
+func (s *BillingService) RefundForAPI(ctx context.Context, key *model.APIKey, amount float64) error {
+	if key == nil {
+		return nil
+	}
+	return s.store.AccountRefundPreDeduct(ctx, key.UserID, amount)
+}
+
+func (s *BillingService) FinalizeForAPI(ctx context.Context, key *model.APIKey, preDeducted, actual float64, usage model.Usage, modelName, requestID string) error {
+	if key == nil {
+		return errors.New("missing api key")
+	}
+	return s.store.AccountFinalizeDeduct(ctx, key.UserID, key.ID, "api_consume", modelName, requestID, preDeducted, actual, usage)
+}
+
+// PreDeductForChat applies monthly grant (if any) then pre-deducts account for dashboard chat.
+func (s *BillingService) PreDeductForChat(ctx context.Context, userID string, amount, grantUSD float64) error {
+	if grantUSD > 0 {
+		_, _ = s.store.TryMonthlyGrant(ctx, userID, grantUSD)
+	}
+	return s.store.AccountPreDeduct(ctx, userID, amount)
+}
+
+func (s *BillingService) RefundForChat(ctx context.Context, userID string, amount float64) error {
+	return s.store.AccountRefundPreDeduct(ctx, userID, amount)
+}
+
+func (s *BillingService) FinalizeForChat(ctx context.Context, userID string, preDeducted, actual float64, usage model.Usage, modelName, requestID string) error {
+	return s.store.AccountFinalizeDeduct(ctx, userID, "", "chat_consume", modelName, requestID, preDeducted, actual, usage)
 }

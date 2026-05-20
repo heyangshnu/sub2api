@@ -50,6 +50,12 @@ type Config struct {
 	RateLimitRedisFailOpen bool
 	// AllowUnknownModelPricing: when false, /v1/chat rejects models not listed in model.DefaultPricing.
 	AllowUnknownModelPricing bool
+
+	// Account wallet (USD)
+	AccountMonthlyGrantUSD           float64
+	RequirePaymentBeforeCreateKey    bool
+	ChatEnabledModels              []string
+	RegisterOTPCooldownSec           int
 }
 
 type ProviderConfig struct {
@@ -95,9 +101,25 @@ func Load() *Config {
 		AllowMemoryStore:    allowMem,
 		RateLimitRedisFailOpen: rlFailOpen,
 		AllowUnknownModelPricing: allowUnknownModel,
+		AccountMonthlyGrantUSD:    getEnvFloat("ACCOUNT_MONTHLY_GRANT_USD", 0.5),
+		RequirePaymentBeforeCreateKey: getEnv("REQUIRE_PAYMENT_BEFORE_CREATE_KEY", "true") != "false",
+		ChatEnabledModels:         getEnvSliceTrimmed("CHAT_ENABLED_MODELS"),
+		RegisterOTPCooldownSec:    getEnvInt("REGISTER_OTP_COOLDOWN_SEC", 60),
+	}
+	if len(cfg.ChatEnabledModels) == 0 {
+		cfg.ChatEnabledModels = []string{"deepseek-chat"}
 	}
 
 	return cfg
+}
+
+func getEnvFloat(key string, defaultVal float64) float64 {
+	if val := os.Getenv(key); val != "" {
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return f
+		}
+	}
+	return defaultVal
 }
 
 func Get() *Config {

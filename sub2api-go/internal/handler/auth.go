@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"sub2api-go/internal/config"
 	"sub2api-go/internal/middleware"
 	"sub2api-go/internal/model"
 	"sub2api-go/internal/store"
@@ -31,10 +32,12 @@ type AuthHandler struct {
 	smtpUsername       string
 	smtpPassword       string
 	smtpFrom           string
+	cfg                *config.Config
 }
 
 func NewAuthHandler(
 	s store.Store,
+	cfg *config.Config,
 	jwtSecret, inviteCode string,
 	emailVerifyEnabled bool,
 	smtpHost string,
@@ -43,6 +46,7 @@ func NewAuthHandler(
 ) *AuthHandler {
 	return &AuthHandler{
 		store:              s,
+		cfg:                cfg,
 		jwtSecret:          []byte(jwtSecret),
 		inviteCode:         inviteCode,
 		emailVerifyEnabled: emailVerifyEnabled,
@@ -57,9 +61,15 @@ func NewAuthHandler(
 // AuthConfig handles GET /auth/config — public flags for the dashboard (no auth).
 func (h *AuthHandler) AuthConfig(c *gin.Context) {
 	inviteRequired := strings.TrimSpace(h.inviteCode) != ""
+	models := []string{"deepseek-chat"}
+	if h.cfg != nil && len(h.cfg.ChatEnabledModels) > 0 {
+		models = h.cfg.ChatEnabledModels
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"email_verify_enabled": h.emailVerifyEnabled,
 		"invite_required":      inviteRequired,
+		"chat_enabled_models":  models,
+		"currency":             "USD",
 	})
 }
 
@@ -71,10 +81,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	wantInvite := strings.TrimSpace(h.inviteCode)
-	gotInvite := strings.TrimSpace(req.InviteCode)
-	if wantInvite != "" && gotInvite != wantInvite {
-		c.JSON(http.StatusForbidden, model.NewAPIError("forbidden", "邀请码不正确，请与服务端 .env 中 INVITE_CODE 完全一致（区分大小写）"))
+	if msg := validateInviteCode(h.inviteCode, req.InviteCode); msg != "" {
+		c.JSON(http.StatusForbidden, model.NewAPIError("forbidden", msg))
 		return
 	}
 
@@ -157,6 +165,11 @@ func (h *AuthHandler) SendRegisterCode(c *gin.Context) {
 	var req model.SendRegisterCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid request: "+err.Error()))
+		return
+	}
+
+	if msg := validateInviteCode(h.inviteCode, req.InviteCode); msg != "" {
+		c.JSON(http.StatusForbidden, model.NewAPIError("forbidden", msg))
 		return
 	}
 
@@ -360,7 +373,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// GetMe handles GET /auth/me
+// GetMe handles GET /dashboard/me
 func (h *AuthHandler) GetMe(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -373,8 +386,80 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 		c.JSON(http.StatusNotFound, model.NewAPIError("not_found", "User not found"))
 		return
 	}
+	spendable, _ := h.store.GetAccountBalance(c.Request.Context(), user.ID)
+	recharged, _ := h.store.GetAccountRechargedBalance(c.Request.Context(), user.ID)
+	user.Balance = spendable
 
-	c.JSON(http.StatusOK, user)
+	canCreate := user.HasPaid
+	if h.cfg != nil && !h.cfg.RequirePaymentBeforeCreateKey {
+		canCreate = true
+	}
+	c.JSON(http.StatusOK, model.UserProfile{
+		ID:               user.ID,
+		Email:            user.Email,
+		Name:             user.Name,
+		Status:           user.Status,
+		Balance:          recharged,
+		SpendableBalance: spendable,
+		HasPaid:          user.HasPaid,
+		CanCreateKey:     canCreate,
+		Currency:         "USD",
+	})
+}
+
+// PatchMe handles PATCH /dashboard/me
+func (h *AuthHandler) PatchMe(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var req model.UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid request"))
+		return
+	}
+	user, err := h.store.GetUserByID(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(http.StatusNotFound, model.NewAPIError("not_found", "User not found"))
+		return
+	}
+	if strings.TrimSpace(req.Name) != "" {
+		user.Name = strings.TrimSpace(req.Name)
+	}
+	user.UpdatedAt = time.Now()
+	if err := h.store.UpdateUser(c.Request.Context(), user); err != nil {
+		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to update profile"))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok", "name": user.Name})
+}
+
+// ChangePassword handles POST /dashboard/change-password
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var req model.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid request"))
+		return
+	}
+	user, err := h.store.GetUserByID(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(http.StatusNotFound, model.NewAPIError("not_found", "User not found"))
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		c.JSON(http.StatusUnauthorized, model.NewAPIError("authentication_error", "Current password is incorrect"))
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to hash password"))
+		return
+	}
+	user.PasswordHash = string(hash)
+	user.UpdatedAt = time.Now()
+	if err := h.store.UpdateUser(c.Request.Context(), user); err != nil {
+		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to update password"))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Password updated"})
 }
 
 // JWTAuthMiddleware validates JWT token
@@ -564,4 +649,20 @@ func smtpClientSend(client *smtp.Client, auth smtp.Auth, from string, to []strin
 func generateUserID(email string) string {
 	h := sha256.Sum256([]byte(email + time.Now().String()))
 	return "user_" + hex.EncodeToString(h[:8])
+}
+
+// validateInviteCode returns a user-facing message when invite is required but missing or wrong.
+func validateInviteCode(configured, provided string) string {
+	want := strings.TrimSpace(configured)
+	got := strings.TrimSpace(provided)
+	if want == "" {
+		return ""
+	}
+	if got == "" {
+		return "请先填写邀请码"
+	}
+	if got != want {
+		return "邀请码输入有误"
+	}
+	return ""
 }

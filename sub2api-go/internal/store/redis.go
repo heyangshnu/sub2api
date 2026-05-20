@@ -210,7 +210,7 @@ func (s *RedisStore) ValidateKey(ctx context.Context, rawKey string) (*model.API
 	if key.Status != "active" {
 		return nil, ErrKeyDisabled
 	}
-	
+	s.enrichKey(ctx, &key)
 	return &key, nil
 }
 
@@ -238,7 +238,7 @@ func (s *RedisStore) GetKeyByHash(ctx context.Context, keyHash string) (*model.A
 			key.Balance = balance
 		}
 	}
-	
+	s.enrichKey(ctx, &key)
 	return &key, nil
 }
 
@@ -845,6 +845,7 @@ func (s *RedisStore) CreateUser(ctx context.Context, user *model.User) error {
 	pipe.Set(ctx, KeyPrefixUser+user.ID, userJSON, 0)
 	pipe.Set(ctx, KeyPrefixUserEmail+user.Email, user.ID, 0)
 	pipe.Set(ctx, KeyPrefixUserAuth+user.ID, authJSON, 0)
+	pipe.Set(ctx, accountBalanceKey(user.ID), "0", 0)
 
 	_, err = pipe.Exec(ctx)
 	return err
@@ -897,8 +898,20 @@ func (s *RedisStore) GetUserByID(ctx context.Context, userID string) (*model.Use
 	if err := s.mergeUserPasswordHash(ctx, userID, &user); err != nil {
 		return nil, err
 	}
+	if bal, err := s.GetAccountBalance(ctx, userID); err == nil {
+		user.Balance = bal
+	}
 
 	return &user, nil
+}
+
+func (s *RedisStore) enrichKey(ctx context.Context, key *model.APIKey) {
+	if key == nil {
+		return
+	}
+	if spent, err := s.GetKeySpentTotal(ctx, key.ID); err == nil {
+		key.SpentTotal = spent
+	}
 }
 
 func (s *RedisStore) UpdateUser(ctx context.Context, user *model.User) error {

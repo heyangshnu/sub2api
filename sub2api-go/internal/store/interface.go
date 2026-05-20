@@ -20,6 +20,9 @@ var (
 
 	ErrResetPasswordOTPInvalid = errors.New("invalid or expired verification code")
 	ErrResetPasswordOTPCooldown = errors.New("please wait before requesting another code")
+
+	ErrPaymentRequired       = errors.New("payment required before creating api key")
+	ErrKeySpendLimitExceeded = errors.New("api key spend limit exceeded")
 )
 
 // Store defines the interface for storage operations
@@ -64,6 +67,20 @@ type Store interface {
 	AggregateConsumeByDay(ctx context.Context, keyHash string, days int) ([]model.DailyUsagePoint, error)
 	AppendRequestLog(ctx context.Context, entry *model.RequestLogEntry) error
 	ListRequestLogs(ctx context.Context, keyID string, limit, offset int) ([]*model.RequestLogEntry, int, error)
+
+	// Account wallet (USD) — shared by dashboard chat and API key usage
+	GetAccountBalance(ctx context.Context, userID string) (float64, error)
+	GetAccountRechargedBalance(ctx context.Context, userID string) (float64, error)
+	AccountTopup(ctx context.Context, userID string, amount float64, txType, note, stripePaymentID string, setHasPaid bool) error
+	AccountPreDeduct(ctx context.Context, userID string, amount float64) error
+	AccountRefundPreDeduct(ctx context.Context, userID string, amount float64) error
+	AccountFinalizeDeduct(ctx context.Context, userID, keyID, txType, modelName, requestID string, preDeducted, actualAmount float64, usage model.Usage) error
+	TryMonthlyGrant(ctx context.Context, userID string, grantUSD float64) (granted bool, err error)
+	CheckKeySpendLimit(ctx context.Context, keyID string, spendLimit *float64, additionalAmount float64) error
+	GetKeySpentTotal(ctx context.Context, keyID string) (float64, error)
+	AddKeySpent(ctx context.Context, keyID string, amount float64) error
+	SetKeySpendLimit(ctx context.Context, keyHash string, spendLimit *float64) error
+	ListAccountTransactions(ctx context.Context, userID string, limit, offset int) ([]*model.Transaction, int, error)
 }
 
 // Ensure implementations satisfy the interface

@@ -28,38 +28,21 @@ const TOPUP_OPTIONS = [
 ];
 
 export function TopupDialog() {
-  const { apiKey } = useAuth();
+  const { refreshProfile } = useAuth();
   const [amount, setAmount] = useState("10");
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
   const handleTopup = async () => {
-    if (!apiKey) return;
-
     setLoading(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/v1/payment/checkout`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ amount: parseFloat(amount) }),
-        }
+      const data = await import("@/lib/api").then((m) =>
+        m.apiClient.createAccountCheckout(parseFloat(amount))
       );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error?.message || "创建支付失败");
-      }
-
-      // Redirect to Stripe Checkout
       if (data.checkout_url) {
         window.location.href = data.checkout_url;
       }
+      await refreshProfile();
     } catch (err) {
       alert(err instanceof Error ? err.message : "支付失败");
     } finally {
@@ -74,8 +57,7 @@ export function TopupDialog() {
           type="button"
           variant="default"
           size="sm"
-          disabled={!apiKey}
-          className="border border-emerald-200 bg-emerald-50 text-emerald-900 shadow-sm hover:bg-emerald-100 disabled:opacity-50"
+          className="border border-emerald-200 bg-emerald-50 text-emerald-900 shadow-sm hover:bg-emerald-100"
         >
           充值
         </Button>
@@ -84,9 +66,7 @@ export function TopupDialog() {
         <DialogHeader>
           <DialogTitle>账户充值</DialogTitle>
           <DialogDescription className="text-slate-600">
-            {apiKey
-              ? "选择充值金额，支付完成后余额将自动到账到当前 API Key"
-              : "请先创建 API Key 后再充值"}
+            选择充值金额，支付完成后 USD 将入账您的账户余额（对话与 API 共用）
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -120,11 +100,7 @@ export function TopupDialog() {
             </div>
           </div>
 
-          <Button
-            onClick={handleTopup}
-            disabled={loading || !apiKey}
-            className="w-full"
-          >
+          <Button onClick={handleTopup} disabled={loading} className="w-full">
             {loading ? "跳转中..." : `支付 $${amount}`}
           </Button>
 

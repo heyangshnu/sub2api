@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { apiClient, User, APIKey } from "@/lib/api";
+import { apiClient, User, UserProfile, APIKey } from "@/lib/api";
 
 type AuthMode = "none" | "api_key" | "jwt";
 
@@ -10,8 +10,10 @@ interface AuthContextType {
   isLoading: boolean;
   authMode: AuthMode;
   user: User | null;
+  userProfile: UserProfile | null;
   apiKey: string | null;
   apiKeys: APIKey[];
+  refreshProfile: () => Promise<void>;
   
   // API Key login (legacy)
   loginWithApiKey: (apiKey: string) => Promise<boolean>;
@@ -43,8 +45,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [authMode, setAuthMode] = useState<AuthMode>("none");
   const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
+
+  const refreshProfile = async () => {
+    if (!apiClient.getToken()) return;
+    try {
+      const profile = await apiClient.getMe();
+      setUserProfile(profile);
+      setUser({
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        status: profile.status,
+        created_at: "",
+      });
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Check for saved auth on mount
   useEffect(() => {
@@ -58,7 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           // Verify token is still valid
           const currentUser = await apiClient.getMe();
-          setUser(currentUser);
+          setUserProfile(currentUser);
+          setUser({
+            id: currentUser.id,
+            email: currentUser.email,
+            name: currentUser.name,
+            status: currentUser.status,
+            created_at: "",
+          });
           setIsAuthenticated(true);
           setAuthMode("jwt");
           
@@ -133,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(response.user);
       setIsAuthenticated(true);
       setAuthMode("jwt");
+      await refreshProfile();
       
       // Load user's API keys
       try {
@@ -182,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     apiClient.clearAll();
     setApiKey(null);
     setUser(null);
+    setUserProfile(null);
     setApiKeys([]);
     setIsAuthenticated(false);
     setAuthMode("none");
@@ -210,8 +239,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       authMode,
       user,
+      userProfile,
       apiKey,
       apiKeys,
+      refreshProfile,
       loginWithApiKey,
       loginWithEmail,
       register,

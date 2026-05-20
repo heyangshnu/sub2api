@@ -106,11 +106,44 @@ func (h *PaymentHandler) HandleWebhook(c *gin.Context) {
 			return
 		}
 
-		// Extract metadata
-		keyHash := session.Metadata["key_hash"]
 		amountStr := session.Metadata["amount"]
-		
-		if keyHash == "" || amountStr == "" {
+		if amountStr == "" {
+			log.Printf("Missing amount metadata in session %s", session.ID)
+			c.JSON(http.StatusOK, gin.H{"received": true})
+			return
+		}
+
+		// Account topup (JWT checkout)
+		if session.Metadata["type"] == "account_topup" {
+			userID := session.Metadata["user_id"]
+			if userID == "" {
+				log.Printf("Missing user_id in account session %s", session.ID)
+				c.JSON(http.StatusOK, gin.H{"received": true})
+				return
+			}
+			metaAmount, err := strconv.ParseFloat(amountStr, 64)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"received": true})
+				return
+			}
+			stripeUSD := float64(session.AmountTotal) / 100.0
+			if math.Abs(metaAmount-stripeUSD) > 0.02 {
+				c.JSON(http.StatusOK, gin.H{"received": true, "error": "amount_mismatch"})
+				return
+			}
+			if err := h.store.AccountTopup(c.Request.Context(), userID, stripeUSD, "topup", "Stripe payment: "+session.ID, session.ID, true); err != nil {
+				log.Printf("Account topup failed session %s: %v", session.ID, err)
+				c.JSON(http.StatusOK, gin.H{"received": true, "error": "topup_failed"})
+				return
+			}
+			log.Printf("Account topup $%.2f user %s session %s", stripeUSD, userID, session.ID)
+			c.JSON(http.StatusOK, gin.H{"received": true, "topup": stripeUSD})
+			return
+		}
+
+		// Legacy: key_hash topup
+		keyHash := session.Metadata["key_hash"]
+		if keyHash == "" {
 			log.Printf("Missing metadata in session %s", session.ID)
 			c.JSON(http.StatusOK, gin.H{"received": true})
 			return

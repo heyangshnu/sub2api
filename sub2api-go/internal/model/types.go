@@ -78,8 +78,35 @@ type User struct {
 	EmailVerified         bool       `json:"email_verified" db:"email_verified"`
 	EmailVerifyTokenHash  string     `json:"-" db:"email_verify_token_hash"`
 	EmailVerifyExpiresAt  *time.Time `json:"-" db:"email_verify_expires_at"`
+	Balance               float64    `json:"balance" db:"balance"`
+	RechargedBalance      float64    `json:"recharged_balance,omitempty" db:"recharged_balance"`
+	HasPaid               bool       `json:"has_paid" db:"has_paid"`
+	FirstPaidAt           *time.Time `json:"first_paid_at,omitempty" db:"first_paid_at"`
+	LastMonthlyGrantMonth string     `json:"last_monthly_grant_month,omitempty" db:"last_monthly_grant_month"`
 	CreatedAt             time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt             time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// UserProfile is returned by GET /dashboard/me (no password).
+type UserProfile struct {
+	ID                    string  `json:"id"`
+	Email                 string  `json:"email"`
+	Name                  string  `json:"name"`
+	Status                string  `json:"status"`
+	Balance          float64 `json:"balance"`           // 展示用：仅客户真实充值结余（不含月赠）
+	SpendableBalance float64 `json:"spendable_balance"` // 实际可消费总额（含月赠等）
+	HasPaid          bool    `json:"has_paid"`
+	CanCreateKey     bool    `json:"can_create_key"`
+	Currency         string  `json:"currency"`
+}
+
+type UpdateProfileRequest struct {
+	Name string `json:"name"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=6"`
 }
 
 type RegisterRequest struct {
@@ -91,7 +118,8 @@ type RegisterRequest struct {
 }
 
 type SendRegisterCodeRequest struct {
-	Email string `json:"email" binding:"required,email"`
+	Email      string `json:"email" binding:"required,email"`
+	InviteCode string `json:"invite_code,omitempty"`
 }
 
 // SendResetPasswordCodeRequest is POST /auth/send-reset-password-code (same shape as register code).
@@ -125,9 +153,11 @@ type APIKey struct {
 	KeyPrefix    string    `json:"key_prefix" db:"key_prefix"`
 	UserID       string    `json:"user_id" db:"user_id"`
 	Name         string    `json:"name" db:"name"`
-	Balance      float64   `json:"balance" db:"balance"`
+	Balance      float64   `json:"balance" db:"balance"` // legacy; billing uses user account
 	Status       string    `json:"status" db:"status"` // active, disabled
 	RateLimit    int       `json:"rate_limit" db:"rate_limit"`
+	SpendLimit   *float64  `json:"spend_limit,omitempty" db:"spend_limit"`
+	SpentTotal   float64   `json:"spent_total" db:"spent_total"`
 	IPWhitelist  []string  `json:"ip_whitelist,omitempty" db:"-"` // IP 白名单，空数组表示不限制
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
@@ -138,8 +168,9 @@ type APIKey struct {
 
 type Transaction struct {
 	ID              string    `json:"id" db:"id"`
-	KeyID           string    `json:"key_id" db:"key_id"`
-	Type            string    `json:"type" db:"type"` // consume, topup, refund
+	UserID          string    `json:"user_id" db:"user_id"`
+	KeyID           string    `json:"key_id,omitempty" db:"key_id"`
+	Type            string    `json:"type" db:"type"` // topup, monthly_grant, chat_consume, api_consume, refund
 	Amount          float64   `json:"amount" db:"amount"`
 	BalanceBefore   float64   `json:"balance_before" db:"balance_before"`
 	BalanceAfter    float64   `json:"balance_after" db:"balance_after"`
@@ -220,15 +251,21 @@ type TopupRequest struct {
 
 // CreateUserKeyRequest 用户从 Dashboard 创建 Key 的请求（需二次验证密码）
 type CreateUserKeyRequest struct {
-	Name      string `json:"name,omitempty"`
-	Password  string `json:"password" binding:"required"` // 二次验证
-	RateLimit int    `json:"rate_limit,omitempty"`
+	Name       string   `json:"name,omitempty"`
+	Password   string   `json:"password" binding:"required"` // 二次验证
+	RateLimit  int      `json:"rate_limit,omitempty"`
+	SpendLimit *float64 `json:"spend_limit,omitempty"`
 }
 
 // UpdateKeySettingsRequest 更新 Key 设置（IP 白名单、频次）
 type UpdateKeySettingsRequest struct {
 	IPWhitelist []string `json:"ip_whitelist"`
 	RateLimit   int      `json:"rate_limit,omitempty"`
+	SpendLimit  *float64 `json:"spend_limit,omitempty"` // nil = clear limit; omit = unchanged
+}
+
+type AccountCheckoutRequest struct {
+	Amount float64 `json:"amount" binding:"required,min=1,max=1000"`
 }
 
 // ==================== Error Types ====================

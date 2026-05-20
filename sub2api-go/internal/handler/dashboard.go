@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"sub2api-go/internal/config"
 	"sub2api-go/internal/model"
 	"sub2api-go/internal/store"
 )
@@ -12,10 +13,11 @@ import (
 // DashboardHandler 处理用户 Dashboard 的 Key 管理
 type DashboardHandler struct {
 	store store.Store
+	cfg   *config.Config
 }
 
-func NewDashboardHandler(s store.Store) *DashboardHandler {
-	return &DashboardHandler{store: s}
+func NewDashboardHandler(s store.Store, cfg *config.Config) *DashboardHandler {
+	return &DashboardHandler{store: s, cfg: cfg}
 }
 
 // CreateKey 用户从 Dashboard 创建 Key（需二次验证密码）
@@ -41,7 +43,25 @@ func (h *DashboardHandler) CreateKey(c *gin.Context) {
 		return
 	}
 
-	// 创建 Key（初始余额 0，用户充值后使用）
+	requirePaid := h.cfg == nil || h.cfg.RequirePaymentBeforeCreateKey
+	if requirePaid && !user.HasPaid {
+		c.JSON(http.StatusForbidden, model.NewAPIError("payment_required", "Complete your first account topup before creating an API key"))
+		return
+	}
+
+	accountBal, _ := h.store.GetAccountBalance(c.Request.Context(), uid)
+	if req.SpendLimit != nil {
+		if *req.SpendLimit <= 0 {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "spend_limit must be positive"))
+			return
+		}
+		if *req.SpendLimit > accountBal+1e-9 {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "spend_limit cannot exceed current account balance"))
+			return
+		}
+	}
+
+	// 创建 Key（余额走账户；Key 不再单独持币）
 	rateLimit := req.RateLimit
 	if rateLimit <= 0 {
 		rateLimit = 60 // 默认 60/分钟
@@ -55,6 +75,10 @@ func (h *DashboardHandler) CreateKey(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to create key"))
 		return
+	}
+	if req.SpendLimit != nil {
+		_ = h.store.SetKeySpendLimit(c.Request.Context(), apiKey.KeyHash, req.SpendLimit)
+		apiKey.SpendLimit = req.SpendLimit
 	}
 
 	// 明文 Key 仅此一次返回
@@ -103,9 +127,24 @@ func (h *DashboardHandler) UpdateKeySettings(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to update settings"))
 		return
 	}
+	if req.SpendLimit != nil {
+		accountBal, _ := h.store.GetAccountBalance(c.Request.Context(), uid)
+		if *req.SpendLimit > accountBal+1e-9 {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "spend_limit cannot exceed current account balance"))
+			return
+		}
+		if err := h.store.SetKeySpendLimit(c.Request.Context(), key.KeyHash, req.SpendLimit); err != nil {
+			c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to update spend limit"))
+			return
+		}
+	}
 
 	// 返回更新后的 Key
 	updatedKey, _ := h.store.GetKeyByID(c.Request.Context(), keyID)
+	if updatedKey != nil {
+		spent, _ := h.store.GetKeySpentTotal(c.Request.Context(), updatedKey.ID)
+		updatedKey.SpentTotal = spent
+	}
 	c.JSON(http.StatusOK, updatedKey)
 }
 

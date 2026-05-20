@@ -21,10 +21,6 @@ export function TechBackground() {
         aria-hidden
       />
       <div
-        className="pointer-events-none fixed inset-0 -z-10 opacity-[0.45] bg-[linear-gradient(to_right,rgba(148,163,184,0.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.14)_1px,transparent_1px)] bg-[size:52px_52px]"
-        aria-hidden
-      />
-      <div
         className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-b from-white/40 via-transparent to-slate-100/80"
         aria-hidden
       />

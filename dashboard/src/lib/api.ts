@@ -54,6 +54,18 @@ export interface User {
   created_at: string;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  status: string;
+  balance: number;
+  spendable_balance?: number;
+  has_paid: boolean;
+  can_create_key: boolean;
+  currency: string;
+}
+
 export interface AuthResponse {
   token?: string;
   user?: User;
@@ -69,6 +81,8 @@ export interface APIKey {
   balance: number;
   status: string;
   rate_limit: number;
+  spend_limit?: number | null;
+  spent_total?: number;
   ip_whitelist?: string[];
   created_at: string;
 }
@@ -84,8 +98,9 @@ export interface UsageResponse {
 
 export interface Transaction {
   id: string;
-  key_id: string;
-  type: "consume" | "topup" | "refund";
+  user_id?: string;
+  key_id?: string;
+  type: string;
   amount: number;
   balance_before: number;
   balance_after: number;
@@ -244,6 +259,8 @@ class APIClient {
   async getAuthConfig(): Promise<{
     email_verify_enabled: boolean;
     invite_required?: boolean;
+    chat_enabled_models?: string[];
+    currency?: string;
   }> {
     const response = await fetch(`${API_BASE}/auth/config`, {
       method: "GET",
@@ -282,10 +299,13 @@ class APIClient {
     });
   }
 
-  async sendRegisterCode(email: string): Promise<{ message: string }> {
+  async sendRegisterCode(email: string, inviteCode?: string): Promise<{ message: string }> {
     return this.authRequest<{ message: string }>("/auth/send-register-code", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({
+        email,
+        invite_code: inviteCode?.trim() || undefined,
+      }),
     });
   }
 
@@ -311,8 +331,38 @@ class APIClient {
     });
   }
 
-  async getMe(): Promise<User> {
-    return this.authRequest<User>("/dashboard/me");
+  async getMe(): Promise<UserProfile> {
+    return this.authRequest<UserProfile>("/dashboard/me");
+  }
+
+  async updateProfile(name: string): Promise<{ message: string }> {
+    return this.authRequest("/dashboard/me", {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    return this.authRequest("/dashboard/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    });
+  }
+
+  async createAccountCheckout(amount: number): Promise<{ checkout_url: string; session_id: string }> {
+    return this.authRequest("/dashboard/payment/checkout", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    });
+  }
+
+  async getAccountTransactions(limit = 20, offset = 0): Promise<TransactionsResponse> {
+    return this.authRequest<TransactionsResponse>(
+      `/dashboard/account/transactions?limit=${limit}&offset=${offset}`
+    );
   }
 
   async getMyKeys(): Promise<{ keys: APIKey[] }> {
@@ -324,7 +374,8 @@ class APIClient {
   async createKey(
     password: string,
     name?: string,
-    rateLimit?: number
+    rateLimit?: number,
+    spendLimit?: number
   ): Promise<{
     key: string;
     key_id: string;
@@ -336,7 +387,12 @@ class APIClient {
   }> {
     return this.authRequest("/dashboard/keys", {
       method: "POST",
-      body: JSON.stringify({ password, name, rate_limit: rateLimit }),
+      body: JSON.stringify({
+        password,
+        name,
+        rate_limit: rateLimit,
+        spend_limit: spendLimit,
+      }),
     });
   }
 
@@ -344,11 +400,16 @@ class APIClient {
   async updateKeySettings(
     keyId: string,
     ipWhitelist?: string[],
-    rateLimit?: number
+    rateLimit?: number,
+    spendLimit?: number | null
   ): Promise<APIKey> {
     return this.authRequest<APIKey>(`/dashboard/keys/${keyId}`, {
       method: "PATCH",
-      body: JSON.stringify({ ip_whitelist: ipWhitelist, rate_limit: rateLimit }),
+      body: JSON.stringify({
+        ip_whitelist: ipWhitelist,
+        rate_limit: rateLimit,
+        spend_limit: spendLimit,
+      }),
     });
   }
 

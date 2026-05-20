@@ -93,6 +93,7 @@ func main() {
 	paymentHandler := handler.NewPaymentHandler(stripeService, dataStore)
 	authHandler := handler.NewAuthHandler(
 		dataStore,
+		cfg,
 		cfg.JWTSecret,
 		cfg.InviteCode,
 		cfg.EmailVerifyEnabled,
@@ -102,7 +103,8 @@ func main() {
 		cfg.SMTPPassword,
 		cfg.SMTPFrom,
 	)
-	dashboardHandler := handler.NewDashboardHandler(dataStore)
+	dashboardHandler := handler.NewDashboardHandler(dataStore, cfg)
+	accountHandler := handler.NewDashboardAccountHandler(dataStore, stripeService, cfg)
 
 	// Setup Gin
 	if os.Getenv("GIN_MODE") == "" {
@@ -165,6 +167,11 @@ func main() {
 	dashboard.Use(authHandler.JWTAuthMiddleware())
 	{
 		dashboard.GET("/me", authHandler.GetMe)
+		dashboard.PATCH("/me", authHandler.PatchMe)
+		dashboard.POST("/change-password", authHandler.ChangePassword)
+		dashboard.POST("/payment/checkout", accountHandler.CreateAccountCheckout)
+		dashboard.GET("/account/transactions", accountHandler.ListAccountTransactions)
+		dashboard.POST("/chat/completions", chatHandler.DashboardChatCompletions)
 		dashboard.GET("/keys", func(c *gin.Context) {
 			userID, _ := c.Get("user_id")
 			keys, err := dataStore.ListKeys(c.Request.Context(), userID.(string))

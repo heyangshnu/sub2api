@@ -36,7 +36,7 @@ function formatDate(dateStr: string) {
 }
 
 export function ApiKeysCard() {
-  const { apiKeys, apiKey: currentApiKey, refreshKeys, bindUsageApiKey } = useAuth();
+  const { apiKeys, apiKey: currentApiKey, userProfile, refreshKeys, bindUsageApiKey } = useAuth();
   const [showKey, setShowKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -45,6 +45,7 @@ export function ApiKeysCard() {
   const [createName, setCreateName] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createRateLimit, setCreateRateLimit] = useState(60);
+  const [createSpendLimit, setCreateSpendLimit] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -67,7 +68,14 @@ export function ApiKeysCard() {
     setCreateLoading(true);
     setCreateError("");
     try {
-      const result = await apiClient.createKey(createPassword, createName, createRateLimit);
+      const spend =
+        createSpendLimit.trim() === "" ? undefined : parseFloat(createSpendLimit);
+      const result = await apiClient.createKey(
+        createPassword,
+        createName,
+        createRateLimit,
+        spend
+      );
       setNewKey(result.key);
       setCreatePassword("");
       setCreateName("");
@@ -178,7 +186,16 @@ export function ApiKeysCard() {
             </Button>
             <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : handleCloseCreateDialog())}>
               <DialogTrigger>
-                <Button type="button" size="sm">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={userProfile ? !userProfile.can_create_key : false}
+                  title={
+                    userProfile && !userProfile.can_create_key
+                      ? "请先完成首次账户充值"
+                      : undefined
+                  }
+                >
                   + Create Key
                 </Button>
               </DialogTrigger>
@@ -232,6 +249,22 @@ export function ApiKeysCard() {
                         max={3600}
                         value={createRateLimit}
                         onChange={(e) => setCreateRateLimit(parseInt(e.target.value) || 60)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="key-spend-limit">消费上限 USD（可选，≤ 账户余额）</Label>
+                      <Input
+                        id="key-spend-limit"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder={
+                          userProfile
+                            ? `留空不限，充值余额 $${userProfile.balance.toFixed(2)}`
+                            : "留空表示不限"
+                        }
+                        value={createSpendLimit}
+                        onChange={(e) => setCreateSpendLimit(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">

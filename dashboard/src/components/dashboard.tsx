@@ -29,16 +29,33 @@ import { cn, formatUsd } from "@/lib/utils";
 const glassCard =
   "border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
 
+/** 账户页统一字号：标签与数值均为 text-sm */
+const statLabel = "text-sm text-slate-800";
+const statValue = "text-sm font-normal tabular-nums text-slate-900";
+const sectionTitle = "text-sm font-medium text-slate-900";
+const sectionDesc = "text-sm text-slate-800";
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <Card className={glassCard}>
+      <CardHeader className="pb-2">
+        <CardDescription className={statLabel}>{label}</CardDescription>
+        <CardTitle className={cn(statValue, "mt-1")}>{value}</CardTitle>
+      </CardHeader>
+    </Card>
+  );
+}
+
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleString("zh-CN");
 }
 
 function formatAmount(amount: unknown) {
-  return formatUsd(amount, 6);
+  return formatUsd(amount, 2);
 }
 
 export function Dashboard() {
-  const { logout, user, authMode, apiKey, apiKeys } = useAuth();
+  const { logout, user, userProfile, refreshProfile, authMode, apiKey, apiKeys } = useAuth();
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [models, setModels] = useState<Model[]>([]);
@@ -75,19 +92,31 @@ export function Dashboard() {
   }, []);
 
   const loadTransactions = useCallback(async () => {
-    if (!apiClient.getApiKey()) {
-      setTransactions([]);
-      setTxTotal(0);
-      return;
-    }
     try {
+      if (authMode === "jwt" && apiClient.getToken()) {
+        const txData = await apiClient.getAccountTransactions(txLimit, txOffset);
+        setTransactions(txData.transactions || []);
+        setTxTotal(txData.total);
+        return;
+      }
+      if (!apiClient.getApiKey()) {
+        setTransactions([]);
+        setTxTotal(0);
+        return;
+      }
       const txData = await apiClient.getTransactions(txLimit, txOffset);
       setTransactions(txData.transactions || []);
       setTxTotal(txData.total);
     } catch (error) {
       console.error("Failed to load transactions:", error);
     }
-  }, [txLimit, txOffset]);
+  }, [txLimit, txOffset, authMode]);
+
+  useEffect(() => {
+    if (authMode === "jwt") {
+      void refreshProfile();
+    }
+  }, [authMode, refreshProfile]);
 
   useEffect(() => {
     void loadData();
@@ -151,17 +180,27 @@ export function Dashboard() {
   }
 
   const needsApiKeyForUsage = authMode === "jwt" && !apiKey;
+  const needsFirstTopup = userProfile && !userProfile.can_create_key;
 
   return (
     <div className="min-h-screen">
       <header className="border-b border-slate-200/80 bg-white/60 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 md:px-8">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
-            Sub2API
-          </h1>
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 md:px-8">
+          <Link href="/" className={sectionTitle}>
+            账户
+          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "border-slate-200 bg-white/80 text-sm text-slate-800"
+              )}
+            >
+              首页
+            </Link>
             {user && (
-              <span className="hidden text-sm text-slate-600 sm:inline">{user.email}</span>
+              <span className="hidden text-sm text-slate-800 sm:inline">{user.email}</span>
             )}
             {authMode === "api_key" && apiKey && (
               <span className="rounded-lg border border-slate-200 bg-white/80 px-2 py-1 font-mono text-xs text-slate-700">
@@ -171,7 +210,7 @@ export function Dashboard() {
             <TopupDialog />
             {authMode === "jwt" && chartKeyId && (
               <Link
-                href={`/logs?key_id=${encodeURIComponent(chartKeyId)}`}
+                href={`/account/logs?key_id=${encodeURIComponent(chartKeyId)}`}
                 className={cn(
                   buttonVariants({ variant: "outline" }),
                   "border-slate-200 bg-white/80 text-slate-800 hover:bg-slate-50"
@@ -191,7 +230,12 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-8 px-6 py-8 md:px-8">
+      <main className="mx-auto max-w-6xl space-y-6 px-6 py-6 md:px-8">
+        {needsFirstTopup && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+            请先完成<strong className="mx-1">首次账户充值</strong>，解锁创建 API Key（右上角「充值」）。
+          </div>
+        )}
         {needsApiKeyForUsage && (
           <div
             className={cn(
@@ -199,49 +243,27 @@ export function Dashboard() {
               "ring-1 ring-sky-100"
             )}
           >
-            用量、模型与交易依赖 API Key。请先创建 Key，再使用右上角<strong className="mx-1">充值</strong>
-            ；创建成功后会自动绑定用于本页数据展示。
+            用量、模型与交易依赖 API Key。请先创建 Key；创建成功后会自动绑定用于本页数据展示。
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Card className={glassCard}>
-            <CardHeader className="pb-2">
-              <CardDescription className="text-slate-600">余额</CardDescription>
-              <CardTitle className="text-3xl text-emerald-600">
-                {formatUsd(usage?.balance, 4)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className={glassCard}>
-            <CardHeader className="pb-2">
-              <CardDescription className="text-slate-600">累计消费</CardDescription>
-              <CardTitle className="text-3xl text-slate-900">
-                {formatUsd(usage?.total_used, 4)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className={glassCard}>
-            <CardHeader className="pb-2">
-              <CardDescription className="text-slate-600">请求次数</CardDescription>
-              <CardTitle className="text-3xl text-slate-900">
-                {usage?.request_count ?? 0}
-              </CardTitle>
-            </CardHeader>
-          </Card>
+          <StatCard label="账户余额（USD）" value={formatUsd(userProfile?.balance, 2)} />
+          <StatCard label="累计消费（USD）" value={formatUsd(usage?.total_used, 2)} />
+          <StatCard label="请求次数" value={String(usage?.request_count ?? 0)} />
         </div>
 
         {authMode === "jwt" && apiKeys.length > 0 && chartKeyId && (
           <Card className={glassCard}>
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <CardTitle className="text-slate-900">近 14 日消费（按天）</CardTitle>
-                <CardDescription className="text-slate-600">
+                <CardTitle className={sectionTitle}>近 14 日消费（按天）</CardTitle>
+                <CardDescription className={cn(sectionDesc, "mt-1")}>
                   基于扣费流水汇总（UTC 日），不含未扣费请求
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <label htmlFor="usage-key" className="text-sm text-slate-600">
+                <label htmlFor="usage-key" className={statLabel}>
                   Key
                 </label>
                 <select
@@ -277,8 +299,8 @@ export function Dashboard() {
 
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className="text-slate-900">可用模型</CardTitle>
-            <CardDescription className="text-slate-600">
+            <CardTitle className={sectionTitle}>可用模型</CardTitle>
+            <CardDescription className={sectionDesc}>
               {models.length > 0
                 ? "当前 Key 可访问的模型与提供方"
                 : "绑定 API Key 后将显示模型列表"}
@@ -306,8 +328,8 @@ export function Dashboard() {
 
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className="text-slate-900">最近交易</CardTitle>
-            <CardDescription className="text-slate-600">
+            <CardTitle className={sectionTitle}>最近交易</CardTitle>
+            <CardDescription className={sectionDesc}>
               共 {txTotal} 条 · 本页 {transactions.length} 条
             </CardDescription>
           </CardHeader>
@@ -319,18 +341,18 @@ export function Dashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-slate-200 hover:bg-transparent">
-                      <TableHead className="text-slate-600">时间</TableHead>
-                      <TableHead className="text-slate-600">类型</TableHead>
-                      <TableHead className="text-slate-600">模型</TableHead>
-                      <TableHead className="text-slate-600">Token</TableHead>
-                      <TableHead className="text-right text-slate-600">金额</TableHead>
-                      <TableHead className="text-right text-slate-600">余额</TableHead>
+                      <TableHead className={statLabel}>时间</TableHead>
+                      <TableHead className={statLabel}>类型</TableHead>
+                      <TableHead className={statLabel}>模型</TableHead>
+                      <TableHead className={statLabel}>Token</TableHead>
+                      <TableHead className={cn("text-right", statLabel)}>金额</TableHead>
+                      <TableHead className={cn("text-right", statLabel)}>余额</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {transactions.map((tx) => (
                       <TableRow key={tx.id} className="border-slate-200">
-                        <TableCell className="text-sm text-slate-600">
+                        <TableCell className={statValue}>
                           {formatDate(tx.created_at)}
                         </TableCell>
                         <TableCell>
@@ -347,8 +369,8 @@ export function Dashboard() {
                             {tx.type}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-slate-800">{tx.model || "—"}</TableCell>
-                        <TableCell className="text-slate-600">
+                        <TableCell className={statValue}>{tx.model || "—"}</TableCell>
+                        <TableCell className={statValue}>
                           {tx.input_tokens || tx.output_tokens
                             ? `${tx.input_tokens || 0} / ${tx.output_tokens || 0}`
                             : "—"}
@@ -359,7 +381,7 @@ export function Dashboard() {
                           {tx.type === "topup" ? "+" : "-"}
                           {formatAmount(tx.amount)}
                         </TableCell>
-                        <TableCell className="text-right text-slate-800">
+                        <TableCell className={cn("text-right", statValue)}>
                           {formatAmount(tx.balance_after)}
                         </TableCell>
                       </TableRow>

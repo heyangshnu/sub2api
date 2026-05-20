@@ -12,7 +12,10 @@ import { cn } from "@/lib/utils";
 type AuthMode = "login" | "register" | "apikey" | "forgot";
 
 const inputLight =
-  "h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-emerald-500/60 focus-visible:ring-2 focus-visible:ring-emerald-500/20 md:text-sm";
+  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-200 md:text-sm";
+
+const inputCompact =
+  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-200";
 
 export function LoginForm() {
   const { loginWithApiKey, loginWithEmail, register } = useAuth();
@@ -223,7 +226,7 @@ export function LoginForm() {
     );
     if (result.success) {
       setPostRegisterNotice(
-        `注册成功。请使用本邮箱与密码登录；登录后请先创建 API Key，再充值使用。`
+        `注册成功。请使用本邮箱与密码登录；首页可对话，首次充值后可创建 API Key。`
       );
       setSuccessMessage("");
       setError("");
@@ -242,46 +245,79 @@ export function LoginForm() {
     setError("");
     setSuccessMessage("");
     const em = email.trim();
+    const code = inviteCode.trim();
     if (!em) {
       setError("请先填写邮箱");
       return;
     }
+    if (inviteRequired !== false && !code) {
+      setError("请先填写邀请码");
+      return;
+    }
+    if (sendCooldown > 0) return;
+    setSendCooldown(60);
     try {
-      await apiClient.sendRegisterCode(em);
+      await apiClient.sendRegisterCode(em, code || undefined);
       setSuccessMessage("验证码已发送，请查收邮件");
-      setSendCooldown(60);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发送失败");
+      setSendCooldown(0);
+      const msg = e instanceof Error ? e.message : "发送失败";
+      setError(
+        msg.includes("邀请码") || msg.includes("invite")
+          ? "邀请码输入有误"
+          : msg
+      );
     }
   };
 
+  const isRegister = mode === "register";
+
   return (
     <div
-      className="relative flex min-h-screen flex-col overflow-x-hidden px-4 py-10 sm:py-16"
+      className={cn(
+        "relative flex min-h-screen flex-col overflow-hidden px-4",
+        isRegister ? "items-center justify-center py-4" : "overflow-x-hidden py-10 sm:py-16"
+      )}
       data-auth-shell
     >
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-col items-center gap-8 sm:gap-10">
-        {/* 品牌区（参考图：Logo + 主副标题） */}
+      <div
+        className={cn(
+          "relative z-10 mx-auto flex w-full max-w-md flex-col items-center",
+          isRegister ? "gap-4" : "gap-8 sm:gap-10"
+        )}
+      >
         <header className="flex flex-col items-center text-center">
           <div
-            className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500 shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-400/40"
+            className={cn(
+              "flex items-center justify-center rounded-2xl bg-slate-900",
+              isRegister ? "mb-2 h-10 w-10" : "mb-5 h-14 w-14"
+            )}
             aria-hidden
           >
-            <TrendingUp className="h-8 w-8 text-white" strokeWidth={2.5} />
+            <TrendingUp
+              className={cn("text-white", isRegister ? "h-5 w-5" : "h-8 w-8")}
+              strokeWidth={2.5}
+            />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">
+          <h1
+            className={cn(
+              "font-semibold tracking-tight text-slate-900",
+              isRegister ? "text-2xl" : "text-3xl sm:text-[1.75rem]"
+            )}
+          >
             Sub2API
           </h1>
-          <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-600 sm:max-w-sm">
-            OpenAI 兼容网关 · 管理 API Key、用量与计费
-          </p>
+          {!isRegister && (
+            <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-600 sm:max-w-sm">
+              OpenAI 兼容网关 · 管理 API Key、用量与计费
+            </p>
+          )}
         </header>
 
-        {/* 居中卡片：登录 / 注册 / API Key 切换 */}
         <div
           className={cn(
-            "w-full rounded-2xl border border-slate-200/90 bg-white/75 p-8 shadow-xl shadow-slate-300/30 backdrop-blur-2xl",
-            "ring-1 ring-slate-200/50 sm:p-9"
+            "w-full rounded-2xl border border-slate-200/80 bg-white/90 shadow-xl shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/60",
+            isRegister ? "p-5 sm:p-6" : "p-8 sm:p-9"
           )}
         >
           {mode === "login" && (
@@ -561,177 +597,147 @@ export function LoginForm() {
 
           {mode === "register" && (
             <>
-              <h2 className="mb-6 text-lg font-semibold text-slate-900">创建账户</h2>
-              <form onSubmit={handleRegister} className="max-h-[min(70vh,560px)] space-y-4 overflow-y-auto pr-1">
-                <div className="space-y-2">
-                  <Label htmlFor="reg-name" className="text-xs text-slate-600">
-                    昵称（可选）
-                  </Label>
-                  <Input
-                    id="reg-name"
-                    type="text"
-                    placeholder="显示名称"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className={inputLight}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-email" className="text-xs text-slate-600">
-                    邮箱
-                  </Label>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
-                    <Input
-                      id="reg-email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className={cn(inputLight, "pl-10")}
-                      required
-                      autoComplete="email"
-                    />
+              <h2 className="mb-4 text-center text-lg font-semibold tracking-tight text-slate-900">
+                创建账户
+              </h2>
+              <form onSubmit={handleRegister} className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 space-y-1">
+                    <Label htmlFor="reg-email" className="text-[11px] font-medium text-slate-500">
+                      邮箱
+                    </Label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="reg-email"
+                        type="email"
+                        placeholder="your@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className={cn(inputCompact, "pl-9")}
+                        required
+                        autoComplete="email"
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-password" className="text-xs text-slate-600">
-                    密码
-                  </Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
-                    <Input
-                      id="reg-password"
-                      type={showRegisterPassword ? "text" : "password"}
-                      placeholder="至少 6 位"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={cn(inputLight, "pl-10 pr-11")}
-                      required
-                      autoComplete="new-password"
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                      onClick={() => setShowRegisterPassword((v) => !v)}
-                      aria-label={showRegisterPassword ? "隐藏密码" : "显示密码"}
-                    >
-                      {showRegisterPassword ? (
-                        <EyeOff className="size-4" />
-                      ) : (
-                        <Eye className="size-4" />
-                      )}
-                    </button>
+                  <div className="space-y-1">
+                    <Label htmlFor="reg-password" className="text-[11px] font-medium text-slate-500">
+                      密码
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="reg-password"
+                        type={showRegisterPassword ? "text" : "password"}
+                        placeholder="至少 6 位"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={cn(inputCompact, "pr-9")}
+                        required
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                        onClick={() => setShowRegisterPassword((v) => !v)}
+                        aria-label={showRegisterPassword ? "隐藏密码" : "显示密码"}
+                      >
+                        {showRegisterPassword ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-confirm" className="text-xs text-slate-600">
-                    确认密码
-                  </Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                  <div className="space-y-1">
+                    <Label htmlFor="reg-confirm" className="text-[11px] font-medium text-slate-500">
+                      确认密码
+                    </Label>
                     <Input
                       id="reg-confirm"
                       type="password"
                       placeholder="再次输入"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className={cn(inputLight, "pl-10")}
+                      className={inputCompact}
                       required
                       autoComplete="new-password"
                     />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-invite" className="text-xs text-slate-600">
-                    邀请码
-                    {inviteRequired === false && (
-                      <span className="text-slate-500">（当前服务端未启用，可不填）</span>
-                    )}
-                  </Label>
-                  <Input
-                    id="reg-invite"
-                    type="text"
-                    placeholder={
-                      inviteRequired === false
-                        ? "未启用时可留空"
-                        : "须与服务器 INVITE_CODE 一致"
-                    }
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    className={inputLight}
-                    required={inviteRequired !== false}
-                  />
-                </div>
-                {emailVerifyEnabled && (
-                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
-                    <Label htmlFor="reg-code" className="text-xs text-slate-600">
-                      邮箱验证码
+                  <div className="col-span-2 space-y-1">
+                    <Label htmlFor="reg-invite" className="text-[11px] font-medium text-slate-500">
+                      邀请码
+                      {inviteRequired === false && (
+                        <span className="font-normal text-slate-400"> · 可不填</span>
+                      )}
                     </Label>
-                    <div className="flex gap-2">
+                    <Input
+                      id="reg-invite"
+                      type="text"
+                      placeholder={
+                        inviteRequired === false ? "未启用邀请码" : "请输入邀请码"
+                      }
+                      autoComplete="off"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value)}
+                      className={inputCompact}
+                      required={inviteRequired !== false}
+                    />
+                  </div>
+                  {emailVerifyEnabled && (
+                    <div className="col-span-2 flex gap-2">
                       <Input
                         id="reg-code"
                         type="text"
                         inputMode="numeric"
                         autoComplete="one-time-code"
-                        placeholder="6 位数字"
+                        placeholder="验证码"
                         maxLength={6}
                         value={verificationCode}
                         onChange={(e) =>
                           setVerificationCode(e.target.value.replace(/\D/g, ""))
                         }
-                        className={cn(
-                          inputLight,
-                          "flex-1 text-center font-mono tracking-[0.25em]"
-                        )}
+                        className={cn(inputCompact, "flex-1 text-center font-mono tracking-widest")}
                       />
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-11 shrink-0 border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:text-slate-900"
-                        disabled={sendCooldown > 0}
+                        className="h-9 shrink-0 border-slate-200 px-3 text-xs"
+                        disabled={sendCooldown > 0 || isLoading}
                         onClick={handleSendRegisterCode}
                       >
-                        {sendCooldown > 0 ? `${sendCooldown}s` : "发送验证码"}
+                        {sendCooldown > 0 ? `${sendCooldown}s 后重发` : "发送验证码"}
                       </Button>
                     </div>
-                    <p className="text-[11px] leading-relaxed text-slate-500">
-                      先填邮箱，点击发送验证码，将邮件中的数字填入后再提交注册。
-                    </p>
-                  </div>
-                )}
+                  )}
+                </div>
                 {error && (
-                  <p
-                    role="alert"
-                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-                  >
+                  <p role="alert" className="rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-800">
                     {error}
                   </p>
                 )}
                 {successMessage && (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-relaxed text-emerald-900">
-                    <pre className="max-h-36 overflow-y-auto whitespace-pre-wrap break-all font-mono">
-                      {successMessage}
-                    </pre>
-                  </div>
+                  <p className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs text-emerald-900">
+                    {successMessage}
+                  </p>
                 )}
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="flex h-10 w-full items-center justify-center rounded-full bg-slate-900 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
                 >
                   {isLoading ? "创建中…" : "注册"}
                 </button>
               </form>
-              <p className="mt-6 text-center text-sm text-slate-600">
+              <p className="mt-4 text-center text-xs text-slate-500">
                 已有账户？{" "}
                 <button
                   type="button"
-                  className="font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                  className="font-medium text-slate-900 hover:underline"
                   onClick={() => switchMode("login")}
                 >
-                  返回登录
+                  登录
                 </button>
               </p>
             </>

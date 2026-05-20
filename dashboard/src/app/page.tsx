@@ -2,7 +2,8 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
-import { Dashboard } from "@/components/dashboard";
+import { ChatPage } from "@/components/chat/chat-page";
+import { AppShell } from "@/components/app-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Home() {
@@ -28,5 +29,9 @@ export default function Home() {
     return <LoginForm />;
   }
 
-  return <Dashboard />;
+  return (
+    <AppShell>
+      <ChatPage />
+    </AppShell>
+  );
 }

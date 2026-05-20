@@ -72,7 +72,6 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 		}
 	}
 
-	keyHash := middleware.GetKeyHash(c)
 	requestID, _ := c.Get("request_id")
 	reqID := fmt.Sprintf("%v", requestID)
 
@@ -83,11 +82,20 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	log.Printf("[%s] Request: model=%s, stream=%v, estimated_tokens=%d, estimated_cost=%.6f",
 		reqID, req.Model, req.Stream, estimatedTokens, estimatedCost)
 
-	// Pre-deduct
-	if err := h.billingService.PreDeduct(c.Request.Context(), keyHash, estimatedCost); err != nil {
-		if err == store.ErrInsufficientBalance {
+	if apiKey == nil {
+		c.JSON(http.StatusUnauthorized, model.NewAPIError("authentication_error", "API key required"))
+		return
+	}
+
+	// Pre-deduct from user account (optional per-key spend limit)
+	if err := h.billingService.PreDeductForAPI(c.Request.Context(), apiKey, estimatedCost); err != nil {
+		if err == store.ErrInsufficientBalance || err == store.ErrKeySpendLimitExceeded {
 			h.appendChatAudit(c, apiKey, req.Model, req.Stream, "insufficient_balance", startAt, reqID)
-			c.JSON(http.StatusPaymentRequired, model.NewAPIError("insufficient_balance", "Insufficient balance"))
+			msg := "Insufficient account balance"
+			if err == store.ErrKeySpendLimitExceeded {
+				msg = "API key spend limit exceeded"
+			}
+			c.JSON(http.StatusPaymentRequired, model.NewAPIError("insufficient_balance", msg))
 		} else {
 			h.appendChatAudit(c, apiKey, req.Model, req.Stream, "billing_error", startAt, reqID)
 			c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to process billing"))
@@ -99,7 +107,7 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	resp, err := h.providerService.RouteRequest(c.Request.Context(), &req)
 	if err != nil {
 		// Refund on failure
-		h.billingService.RefundPreDeduct(c.Request.Context(), keyHash, estimatedCost)
+		h.billingService.RefundForAPI(c.Request.Context(), apiKey, estimatedCost)
 
 		if err == service.ErrNoProviderForModel {
 			h.appendChatAudit(c, apiKey, req.Model, req.Stream, "client_error", startAt, reqID)
@@ -116,7 +124,7 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	// Check upstream status
 	if resp.StatusCode != http.StatusOK {
 		// Refund on upstream error
-		h.billingService.RefundPreDeduct(c.Request.Context(), keyHash, estimatedCost)
+		h.billingService.RefundForAPI(c.Request.Context(), apiKey, estimatedCost)
 
 		body, _ := io.ReadAll(resp.Body)
 		log.Printf("[%s] Upstream error: status=%d, body=%s", reqID, resp.StatusCode, string(body))
@@ -127,16 +135,129 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 
 	// Handle response based on stream mode
 	if req.Stream {
-		h.handleStreamResponse(c, resp, req.Model, keyHash, estimatedCost, reqID, apiKey, startAt)
+		h.handleStreamResponse(c, resp, req.Model, estimatedCost, reqID, apiKey, startAt)
 	} else {
-		h.handleNonStreamResponse(c, resp, req.Model, keyHash, estimatedCost, reqID, apiKey, startAt)
+		h.handleNonStreamResponse(c, resp, req.Model, estimatedCost, reqID, apiKey, startAt)
 	}
 }
 
-func (h *ChatHandler) handleNonStreamResponse(c *gin.Context, resp *http.Response, modelName, keyHash string, preDeducted float64, requestID string, apiKey *model.APIKey, startAt time.Time) {
+// DashboardChatCompletions handles POST /dashboard/chat/completions (JWT, account billing).
+func (h *ChatHandler) DashboardChatCompletions(c *gin.Context) {
+	var req model.ChatCompletionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid request body: "+err.Error()))
+		return
+	}
+	if h.cfg != nil && len(h.cfg.ChatEnabledModels) > 0 {
+		allowed := false
+		for _, m := range h.cfg.ChatEnabledModels {
+			if m == req.Model {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Model not enabled for dashboard chat"))
+			return
+		}
+	}
+	userID, _ := c.Get("user_id")
+	uid := userID.(string)
+
+	startAt := time.Now()
+	requestID, _ := c.Get("request_id")
+	reqID := fmt.Sprintf("%v", requestID)
+
+	estimatedTokens := service.CountInputTokens(req.Messages)
+	estimatedCost := h.billingService.EstimateCost(req.Model, estimatedTokens)
+	grantUSD := 0.0
+	if h.cfg != nil {
+		grantUSD = h.cfg.AccountMonthlyGrantUSD
+	}
+	if err := h.billingService.PreDeductForChat(c.Request.Context(), uid, estimatedCost, grantUSD); err != nil {
+		if err == store.ErrInsufficientBalance {
+			c.JSON(http.StatusPaymentRequired, model.NewAPIError("insufficient_balance", "Insufficient account balance"))
+		} else {
+			c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to process billing"))
+		}
+		return
+	}
+
+	resp, err := h.providerService.RouteRequest(c.Request.Context(), &req)
+	if err != nil {
+		h.billingService.RefundForChat(c.Request.Context(), uid, estimatedCost)
+		if err == service.ErrNoProviderForModel {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Model not supported: "+req.Model))
+		} else {
+			c.JSON(http.StatusBadGateway, model.NewAPIError("upstream_error", "Failed to reach upstream provider"))
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		h.billingService.RefundForChat(c.Request.Context(), uid, estimatedCost)
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+		return
+	}
+
+	if req.Stream {
+		h.handleStreamResponseJWT(c, resp, req.Model, estimatedCost, reqID, uid, startAt)
+	} else {
+		h.handleNonStreamResponseJWT(c, resp, req.Model, estimatedCost, reqID, uid, startAt)
+	}
+}
+
+func (h *ChatHandler) handleNonStreamResponseJWT(c *gin.Context, resp *http.Response, modelName string, preDeducted float64, requestID, userID string, startAt time.Time) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		h.billingService.RefundPreDeduct(c.Request.Context(), keyHash, preDeducted)
+		h.billingService.RefundForChat(c.Request.Context(), userID, preDeducted)
+		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to read response"))
+		return
+	}
+	var openaiResp *model.ChatCompletionResponse
+	if err := json.Unmarshal(body, &openaiResp); err != nil {
+		h.billingService.RefundForChat(c.Request.Context(), userID, preDeducted)
+		c.JSON(http.StatusBadGateway, model.NewAPIError("upstream_error", "Failed to parse upstream response"))
+		return
+	}
+	actualCost := h.billingService.CalculateActualCost(modelName, openaiResp.Usage)
+	_ = h.billingService.FinalizeForChat(c.Request.Context(), userID, preDeducted, actualCost, openaiResp.Usage, modelName, requestID)
+	respJSON, _ := json.Marshal(openaiResp)
+	c.Data(http.StatusOK, "application/json", respJSON)
+}
+
+func (h *ChatHandler) handleStreamResponseJWT(c *gin.Context, resp *http.Response, modelName string, preDeducted float64, requestID, userID string, startAt time.Time) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		h.billingService.RefundForChat(c.Request.Context(), userID, preDeducted)
+		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Streaming not supported"))
+		return
+	}
+	converter := service.NewStreamConverter("", modelName)
+	usage, err := converter.ProcessOpenAIStream(resp.Body, c.Writer, flusher)
+	var actualCost float64
+	var u model.Usage
+	if usage != nil && usage.TotalTokens > 0 {
+		u = *usage
+		actualCost = h.billingService.CalculateActualCost(modelName, u)
+	} else {
+		actualCost = preDeducted
+		u = model.Usage{TotalTokens: 0}
+	}
+	_ = h.billingService.FinalizeForChat(c.Request.Context(), userID, preDeducted, actualCost, u, modelName, requestID)
+	_ = err
+	_ = startAt
+}
+
+func (h *ChatHandler) handleNonStreamResponse(c *gin.Context, resp *http.Response, modelName string, preDeducted float64, requestID string, apiKey *model.APIKey, startAt time.Time) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		h.billingService.RefundForAPI(c.Request.Context(), apiKey, preDeducted)
 		h.appendChatAudit(c, apiKey, modelName, false, "internal_error", startAt, requestID)
 		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to read response"))
 		return
@@ -155,7 +276,7 @@ func (h *ChatHandler) handleNonStreamResponse(c *gin.Context, resp *http.Respons
 		} else {
 			// Try OpenAI format
 			if err := json.Unmarshal(body, &openaiResp); err != nil {
-				h.billingService.RefundPreDeduct(c.Request.Context(), keyHash, preDeducted)
+				h.billingService.RefundForAPI(c.Request.Context(), apiKey, preDeducted)
 				log.Printf("[%s] Failed to parse response: %v", requestID, err)
 				h.appendChatAudit(c, apiKey, modelName, false, "upstream_error", startAt, requestID)
 				c.JSON(http.StatusBadGateway, model.NewAPIError("upstream_error", "Failed to parse upstream response"))
@@ -165,7 +286,7 @@ func (h *ChatHandler) handleNonStreamResponse(c *gin.Context, resp *http.Respons
 	}
 
 	if openaiResp == nil {
-		h.billingService.RefundPreDeduct(c.Request.Context(), keyHash, preDeducted)
+		h.billingService.RefundForAPI(c.Request.Context(), apiKey, preDeducted)
 		h.appendChatAudit(c, apiKey, modelName, false, "upstream_error", startAt, requestID)
 		c.JSON(http.StatusBadGateway, model.NewAPIError("upstream_error", "Unexpected upstream response format"))
 		return
@@ -175,7 +296,7 @@ func (h *ChatHandler) handleNonStreamResponse(c *gin.Context, resp *http.Respons
 	actualCost := h.billingService.CalculateActualCost(modelName, openaiResp.Usage)
 
 	// Finalize billing
-	if err := h.billingService.FinalizeDeduct(c.Request.Context(), keyHash, preDeducted, actualCost, openaiResp.Usage, modelName, requestID); err != nil {
+	if err := h.billingService.FinalizeForAPI(c.Request.Context(), apiKey, preDeducted, actualCost, openaiResp.Usage, modelName, requestID); err != nil {
 		log.Printf("[%s] Failed to finalize billing: %v", requestID, err)
 	}
 
@@ -189,7 +310,7 @@ func (h *ChatHandler) handleNonStreamResponse(c *gin.Context, resp *http.Respons
 	c.Data(http.StatusOK, "application/json", respJSON)
 }
 
-func (h *ChatHandler) handleStreamResponse(c *gin.Context, resp *http.Response, modelName, keyHash string, preDeducted float64, requestID string, apiKey *model.APIKey, startAt time.Time) {
+func (h *ChatHandler) handleStreamResponse(c *gin.Context, resp *http.Response, modelName string, preDeducted float64, requestID string, apiKey *model.APIKey, startAt time.Time) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -197,7 +318,7 @@ func (h *ChatHandler) handleStreamResponse(c *gin.Context, resp *http.Response, 
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		h.billingService.RefundPreDeduct(c.Request.Context(), keyHash, preDeducted)
+		h.billingService.RefundForAPI(c.Request.Context(), apiKey, preDeducted)
 		h.appendChatAudit(c, apiKey, modelName, true, "internal_error", startAt, requestID)
 		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Streaming not supported"))
 		return
@@ -238,7 +359,7 @@ func (h *ChatHandler) handleStreamResponse(c *gin.Context, resp *http.Response, 
 	}
 
 	// Finalize billing
-	if err := h.billingService.FinalizeDeduct(c.Request.Context(), keyHash, preDeducted, actualCost, *usage, modelName, requestID); err != nil {
+	if err := h.billingService.FinalizeForAPI(c.Request.Context(), apiKey, preDeducted, actualCost, *usage, modelName, requestID); err != nil {
 		log.Printf("[%s] Failed to finalize billing: %v", requestID, err)
 	}
 
