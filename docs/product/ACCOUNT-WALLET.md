@@ -5,7 +5,7 @@
 ## 核心规则
 
 - **币种**：对内、对外统一 **USD**。
-- **月赠**：每用户每自然月 **$0.5**（仅首页 JWT 对话路径触发 `TryMonthlyGrant`）。
+- **月赠**：每用户每自然月 **$0.1**（登录/刷新资料或首页对话时触发 `TryMonthlyGrant`，每月一次）。
 - **首充**：Stripe 成功 → 金额进入 **用户账户** → `has_paid=true` → 解锁创建 API Key（**不自动建 Key**）。
 - **扣费**：首页对话、API Key 调用均扣 **账户余额**。
 - **Key 上限**：可选 `spend_limit`（累计终身），须满足 `spend_limit <= 账户余额`（创建/更新时校验）。
@@ -33,7 +33,7 @@
 ## 配置（`.env`）
 
 ```env
-ACCOUNT_MONTHLY_GRANT_USD=0.5
+ACCOUNT_MONTHLY_GRANT_USD=0.1
 REQUIRE_PAYMENT_BEFORE_CREATE_KEY=true
 CHAT_ENABLED_MODELS=deepseek-chat
 STRIPE_SUCCESS_URL=https://cloudtoken.uk/account?paid=1

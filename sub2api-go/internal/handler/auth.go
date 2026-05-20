@@ -386,6 +386,14 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 		c.JSON(http.StatusNotFound, model.NewAPIError("not_found", "User not found"))
 		return
 	}
+	grantUSD := 0.1
+	if h.cfg != nil {
+		grantUSD = h.cfg.AccountMonthlyGrantUSD
+	}
+	if grantUSD > 0 {
+		_, _ = h.store.TryMonthlyGrant(c.Request.Context(), user.ID, grantUSD)
+	}
+
 	spendable, _ := h.store.GetAccountBalance(c.Request.Context(), user.ID)
 	recharged, _ := h.store.GetAccountRechargedBalance(c.Request.Context(), user.ID)
 	user.Balance = spendable

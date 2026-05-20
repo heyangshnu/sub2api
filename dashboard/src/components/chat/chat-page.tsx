@@ -149,12 +149,6 @@ export function ChatPage() {
       setError("未登录");
       return;
     }
-    const spendable = userProfile?.spendable_balance ?? userProfile?.balance ?? 0;
-    if (userProfile && spendable <= 0) {
-      setError("可用额度不足，请前往「账户」页充值");
-      return;
-    }
-
     setError(null);
     setInput("");
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: text }];

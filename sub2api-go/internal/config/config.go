@@ -101,7 +101,7 @@ func Load() *Config {
 		AllowMemoryStore:    allowMem,
 		RateLimitRedisFailOpen: rlFailOpen,
 		AllowUnknownModelPricing: allowUnknownModel,
-		AccountMonthlyGrantUSD:    getEnvFloat("ACCOUNT_MONTHLY_GRANT_USD", 0.5),
+		AccountMonthlyGrantUSD:    getEnvFloat("ACCOUNT_MONTHLY_GRANT_USD", 0.1),
 		RequirePaymentBeforeCreateKey: getEnv("REQUIRE_PAYMENT_BEFORE_CREATE_KEY", "true") != "false",
 		ChatEnabledModels:         getEnvSliceTrimmed("CHAT_ENABLED_MODELS"),
 		RegisterOTPCooldownSec:    getEnvInt("REGISTER_OTP_COOLDOWN_SEC", 60),
