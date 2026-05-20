@@ -25,6 +25,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { formatUsd } from "@/lib/utils";
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleString("zh-CN", {
@@ -32,10 +33,6 @@ function formatDate(dateStr: string) {
     month: "2-digit",
     day: "2-digit",
   });
-}
-
-function formatBalance(balance: number) {
-  return `$${balance.toFixed(4)}`;
 }
 
 export function ApiKeysCard() {
@@ -180,8 +177,10 @@ export function ApiKeysCard() {
               Refresh
             </Button>
             <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : handleCloseCreateDialog())}>
-              <DialogTrigger render={<Button size="sm" />}>
-                + Create Key
+              <DialogTrigger>
+                <Button type="button" size="sm">
+                  + Create Key
+                </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
@@ -292,7 +291,7 @@ export function ApiKeysCard() {
                     </code>
                   </TableCell>
                   <TableCell className="text-green-600 font-medium">
-                    {formatBalance(key.balance)}
+                    {formatUsd(key.balance, 4)}
                   </TableCell>
                   <TableCell className="text-sm">
                     {key.rate_limit || 60}/min

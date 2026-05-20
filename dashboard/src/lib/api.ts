@@ -316,7 +316,8 @@ class APIClient {
   }
 
   async getMyKeys(): Promise<{ keys: APIKey[] }> {
-    return this.authRequest<{ keys: APIKey[] }>("/dashboard/keys");
+    const res = await this.authRequest<{ keys: APIKey[] | null }>("/dashboard/keys");
+    return { keys: Array.isArray(res.keys) ? res.keys : [] };
   }
 
   // 创建 Key（需密码二次验证）

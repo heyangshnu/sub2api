@@ -13,6 +13,7 @@ import (
 
 	"sub2api-go/internal/config"
 	"sub2api-go/internal/handler"
+	"sub2api-go/internal/model"
 	"sub2api-go/internal/middleware"
 	"sub2api-go/internal/service"
 	"sub2api-go/internal/store"
@@ -170,6 +171,9 @@ func main() {
 			if err != nil {
 				c.JSON(500, gin.H{"error": "Failed to list keys"})
 				return
+			}
+			if keys == nil {
+				keys = []*model.APIKey{}
 			}
 			c.JSON(200, gin.H{"keys": keys})
 		})

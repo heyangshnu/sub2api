@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { TopupDialog } from "./topup-dialog";
 import { ApiKeysCard } from "./api-keys-card";
-import { cn } from "@/lib/utils";
+import { cn, formatUsd } from "@/lib/utils";
 
 const glassCard =
   "border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
@@ -33,8 +33,8 @@ function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleString("zh-CN");
 }
 
-function formatAmount(amount: number) {
-  return `$${amount.toFixed(6)}`;
+function formatAmount(amount: unknown) {
+  return formatUsd(amount, 6);
 }
 
 export function Dashboard() {
@@ -64,7 +64,7 @@ export function Dashboard() {
         apiClient.getModels(),
       ]);
       setUsage(usageData);
-      setModels(modelsData.data);
+      setModels(Array.isArray(modelsData.data) ? modelsData.data : []);
     } catch (error) {
       console.error("Failed to load data:", error);
       setUsage(null);
@@ -102,16 +102,13 @@ export function Dashboard() {
       setChartKeyId("");
       return;
     }
-    if (!chartKeyId && apiKeys.length > 0) {
-      setChartKeyId(apiKeys[0].id);
+    const firstId = apiKeys.find((k) => k.id)?.id ?? "";
+    if (!chartKeyId && firstId) {
+      setChartKeyId(firstId);
       return;
     }
-    if (
-      chartKeyId &&
-      apiKeys.length > 0 &&
-      !apiKeys.some((k) => k.id === chartKeyId)
-    ) {
-      setChartKeyId(apiKeys[0].id);
+    if (chartKeyId && apiKeys.length > 0 && !apiKeys.some((k) => k.id === chartKeyId)) {
+      setChartKeyId(firstId);
     }
   }, [authMode, apiKeys, chartKeyId]);
 
@@ -212,7 +209,7 @@ export function Dashboard() {
             <CardHeader className="pb-2">
               <CardDescription className="text-slate-600">余额</CardDescription>
               <CardTitle className="text-3xl text-emerald-600">
-                ${usage?.balance.toFixed(4) ?? "0.0000"}
+                {formatUsd(usage?.balance, 4)}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -220,7 +217,7 @@ export function Dashboard() {
             <CardHeader className="pb-2">
               <CardDescription className="text-slate-600">累计消费</CardDescription>
               <CardTitle className="text-3xl text-slate-900">
-                ${usage?.total_used.toFixed(4) ?? "0.0000"}
+                {formatUsd(usage?.total_used, 4)}
               </CardTitle>
             </CardHeader>
           </Card>

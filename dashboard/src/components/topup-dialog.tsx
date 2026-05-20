@@ -69,17 +69,16 @@ export function TopupDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="default"
-            size="sm"
-            disabled={!apiKey}
-            className="border border-emerald-200 bg-emerald-50 text-emerald-900 shadow-sm hover:bg-emerald-100 disabled:opacity-50"
-          />
-        }
-      >
-        充值
+      <DialogTrigger>
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          disabled={!apiKey}
+          className="border border-emerald-200 bg-emerald-50 text-emerald-900 shadow-sm hover:bg-emerald-100 disabled:opacity-50"
+        >
+          充值
+        </Button>
       </DialogTrigger>
       <DialogContent className="border-slate-200/90 bg-white/95 text-slate-900 shadow-xl backdrop-blur-xl sm:max-w-md">
         <DialogHeader>
