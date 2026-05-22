@@ -18,8 +18,8 @@ export function AuthDialog() {
     <Dialog open={authDialogOpen} onOpenChange={(open) => !open && closeAuthDialog()}>
       <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto border-slate-200 bg-white p-0 sm:max-w-md">
         <DialogHeader className="sr-only">
-          <DialogTitle>{authDialogTab === "register" ? "注册" : "登录"}</DialogTitle>
-          <DialogDescription>登录或注册 Sub2API 控制台账户</DialogDescription>
+          <DialogTitle>{authDialogTab === "register" ? "Sign up" : "Sign in"}</DialogTitle>
+          <DialogDescription>Sign in or create a Sub2API console account</DialogDescription>
         </DialogHeader>
         <LoginForm
           key={authDialogTab}

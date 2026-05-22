@@ -26,9 +26,9 @@ export default function ProfilePage() {
       await apiClient.changePassword(currentPassword, newPassword);
       setCurrentPassword("");
       setNewPassword("");
-      setMsg("密码已更新");
+      setMsg("Password updated");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "更新失败");
+      setErr(e instanceof Error ? e.message : "Update failed");
     }
   };
 
@@ -36,10 +36,10 @@ export default function ProfilePage() {
     return (
       <ConsoleShell>
         <div className="mx-auto max-w-2xl space-y-4">
-          <h1 className="text-lg font-medium text-slate-900">个人中心</h1>
-          <p className="text-sm text-slate-600">登录后可修改昵称与密码。</p>
+          <h1 className="text-lg font-medium text-slate-900">Profile</h1>
+          <p className="text-sm text-slate-600">Sign in to change your password.</p>
           <Button type="button" onClick={() => openAuthDialog("login")}>
-            登录
+            Sign in
           </Button>
         </div>
       </ConsoleShell>
@@ -49,8 +49,8 @@ export default function ProfilePage() {
   return (
     <ConsoleShell>
       <div className="mx-auto w-full max-w-2xl">
-        <h1 className="text-sm font-medium text-slate-900">个人中心</h1>
-        <p className="mt-2 text-sm text-slate-800">修改登录密码</p>
+        <h1 className="text-sm font-medium text-slate-900">Profile</h1>
+        <p className="mt-2 text-sm text-slate-800">Change password</p>
 
         {(msg || err) && (
           <p className={`mt-4 text-sm ${err ? "text-red-700" : "text-slate-700"}`}>{err || msg}</p>
@@ -59,7 +59,7 @@ export default function ProfilePage() {
         <div className="mt-6 max-w-md space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cur" className={fieldLabel}>
-              当前密码
+              Current password
             </Label>
             <Input
               id="cur"
@@ -72,7 +72,7 @@ export default function ProfilePage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="new" className={fieldLabel}>
-              新密码
+              New password
             </Label>
             <Input
               id="new"
@@ -88,7 +88,7 @@ export default function ProfilePage() {
             onClick={() => requireAuth(() => void savePassword())}
             className="h-10 rounded-lg bg-slate-900 px-6 text-sm hover:bg-slate-800"
           >
-            更新密码
+            Update password
           </Button>
         </div>
       </div>

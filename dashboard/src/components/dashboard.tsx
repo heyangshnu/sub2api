@@ -29,7 +29,7 @@ import { cn, formatUsd } from "@/lib/utils";
 const glassCard =
   "border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
 
-/** 账户页统一字号：标签与数值均为 text-sm */
+/** Account页统一字号：标签与数值均为 text-sm */
 const statLabel = "text-sm text-slate-800";
 const statValue = "text-sm font-normal tabular-nums text-slate-900";
 const sectionTitle = "text-sm font-medium text-slate-900";
@@ -187,7 +187,7 @@ export function Dashboard() {
       <header className="border-b border-slate-200/80 bg-white/60 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 md:px-8">
           <Link href="/" className={sectionTitle}>
-            账户
+            Account
           </Link>
           <div className="flex items-center gap-2">
             <Link
@@ -197,7 +197,7 @@ export function Dashboard() {
                 "border-slate-200 bg-white/80 text-sm text-slate-800"
               )}
             >
-              首页
+              Home
             </Link>
             {user && (
               <span className="hidden text-sm text-slate-800 sm:inline">{user.email}</span>
@@ -211,7 +211,7 @@ export function Dashboard() {
                   "border-slate-200 bg-white/80 text-slate-800 hover:bg-slate-50"
                 )}
               >
-                请求日志
+                Request logs
               </Link>
             )}
             <Button
@@ -219,7 +219,7 @@ export function Dashboard() {
               className="border-slate-200 bg-white/80 text-slate-800 hover:bg-slate-50"
               onClick={logout}
             >
-              退出
+              Sign out
             </Button>
           </div>
         </div>
@@ -228,7 +228,7 @@ export function Dashboard() {
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-6 md:px-8">
         {needsFirstTopup && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
-            请先完成<strong className="mx-1">首次账户充值</strong>，解锁创建 API Key（右上角「充值」）。
+            Complete your <strong className="mx-1">first top-up</strong> to create API keys (use Top-up in the header).
           </div>
         )}
         {needsApiKeyForUsage && (
@@ -238,23 +238,23 @@ export function Dashboard() {
               "ring-1 ring-sky-100"
             )}
           >
-            用量、模型与交易依赖 API Key。请先创建 Key；创建成功后会自动绑定用于本页数据展示。
+            Usage, models, and transactions require an API key. Create one—it auto-binds here for this page.
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <StatCard label="账户余额（USD）" value={formatUsd(userProfile?.balance, 2)} />
-          <StatCard label="累计消费（USD）" value={formatUsd(usage?.total_used, 2)} />
-          <StatCard label="请求次数" value={String(usage?.request_count ?? 0)} />
+          <StatCard label="Account balance (USD)" value={formatUsd(userProfile?.balance, 2)} />
+          <StatCard label="Total spent (USD)" value={formatUsd(usage?.total_used, 2)} />
+          <StatCard label="Requests" value={String(usage?.request_count ?? 0)} />
         </div>
 
         {authMode === "jwt" && apiKeys.length > 0 && chartKeyId && (
           <Card className={glassCard}>
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <CardTitle className={sectionTitle}>近 14 日消费（按天）</CardTitle>
+                <CardTitle className={sectionTitle}>Daily spend (last 14 days)</CardTitle>
                 <CardDescription className={cn(sectionDesc, "mt-1")}>
-                  基于扣费流水汇总（UTC 日），不含未扣费请求
+                  Aggregated from ledger (UTC days)
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -282,7 +282,7 @@ export function Dashboard() {
               {dailyLoading ? (
                 <Skeleton className="h-36 w-full rounded-xl bg-slate-200/70" />
               ) : usagePoints.length === 0 ? (
-                <p className="py-10 text-center text-sm text-slate-500">该 Key 在所选窗口内暂无消费记录</p>
+                <p className="py-10 text-center text-sm text-slate-500">No spend for this key in the selected window</p>
               ) : (
                 <UsageBars points={usagePoints} />
               )}
@@ -294,16 +294,16 @@ export function Dashboard() {
 
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className={sectionTitle}>可用模型</CardTitle>
+            <CardTitle className={sectionTitle}>Available models</CardTitle>
             <CardDescription className={sectionDesc}>
               {models.length > 0
-                ? "当前 Key 可访问的模型与提供方"
-                : "绑定 API Key 后将显示模型列表"}
+                ? "Models available to the current key"
+                : "Bind an API key to see models"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {models.length === 0 ? (
-              <p className="py-8 text-center text-slate-500">暂无数据</p>
+              <p className="py-8 text-center text-slate-500">No data</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {models.map((model) => (
@@ -323,25 +323,25 @@ export function Dashboard() {
 
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className={sectionTitle}>最近交易</CardTitle>
+            <CardTitle className={sectionTitle}>Recent transactions</CardTitle>
             <CardDescription className={sectionDesc}>
-              共 {txTotal} 条 · 本页 {transactions.length} 条
+              {txTotal} total · {transactions.length} on this page
             </CardDescription>
           </CardHeader>
           <CardContent>
             {transactions.length === 0 ? (
-              <p className="py-8 text-center text-slate-500">暂无交易记录</p>
+              <p className="py-8 text-center text-slate-500">No transactions</p>
             ) : (
               <>
                 <Table>
                   <TableHeader>
                     <TableRow className="border-slate-200 hover:bg-transparent">
-                      <TableHead className={statLabel}>时间</TableHead>
-                      <TableHead className={statLabel}>类型</TableHead>
-                      <TableHead className={statLabel}>模型</TableHead>
+                      <TableHead className={statLabel}>Time</TableHead>
+                      <TableHead className={statLabel}>Type</TableHead>
+                      <TableHead className={statLabel}>Model</TableHead>
                       <TableHead className={statLabel}>Token</TableHead>
-                      <TableHead className={cn("text-right", statLabel)}>金额</TableHead>
-                      <TableHead className={cn("text-right", statLabel)}>余额</TableHead>
+                      <TableHead className={cn("text-right", statLabel)}>Amount</TableHead>
+                      <TableHead className={cn("text-right", statLabel)}>Balance</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -393,7 +393,7 @@ export function Dashboard() {
                       onClick={() => setTxOffset(Math.max(0, txOffset - txLimit))}
                       disabled={txOffset === 0}
                     >
-                      上一页
+                      Previous
                     </Button>
                     <span className="flex items-center px-4 text-sm text-slate-600">
                       {Math.floor(txOffset / txLimit) + 1} / {Math.ceil(txTotal / txLimit) || 1}
@@ -405,7 +405,7 @@ export function Dashboard() {
                       onClick={() => setTxOffset(txOffset + txLimit)}
                       disabled={txOffset + txLimit >= txTotal}
                     >
-                      下一页
+                      Next
                     </Button>
                   </div>
                 )}
@@ -429,7 +429,7 @@ function UsageBars({ points }: { points: DailyUsagePoint[] }) {
             <div
               key={p.date}
               className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
-              title={`${p.date}: $${p.total_consumed.toFixed(4)} · ${p.request_count} 次`}
+              title={`${p.date}: $${p.total_consumed.toFixed(4)} · ${p.request_count} requests`}
             >
               <div
                 className="w-full max-w-[14px] rounded-t-md bg-gradient-to-t from-sky-600 to-sky-400"

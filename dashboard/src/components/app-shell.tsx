@@ -17,16 +17,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="flex items-center gap-3">
             <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-slate-200")}>
-              首页
+              Home
             </Link>
             <Link href="/account" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-slate-200")}>
-              账户
+              Account
             </Link>
             <Link href="/profile" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-slate-200")}>
-              个人中心
+              Profile
             </Link>
             <Button type="button" variant="ghost" size="sm" onClick={logout}>
-              退出
+              Sign out
             </Button>
           </div>
         </div>

@@ -51,8 +51,8 @@ function PaymentSuccessContent() {
       <CardHeader className="text-center">
         {status === "loading" && (
           <>
-            <CardTitle>处理中...</CardTitle>
-            <CardDescription>正在确认支付状态</CardDescription>
+            <CardTitle>Processing…</CardTitle>
+            <CardDescription>Confirming payment status</CardDescription>
           </>
         )}
         {status === "success" && (
@@ -72,9 +72,9 @@ function PaymentSuccessContent() {
                 />
               </svg>
             </div>
-            <CardTitle className="text-green-600">支付成功！</CardTitle>
+            <CardTitle className="text-green-600">Payment successful</CardTitle>
             <CardDescription>
-              {amount ? `$${amount} 已充值到您的账户` : "余额已更新"}
+              {amount ? `$${amount} added to your account` : "Balance updated"}
             </CardDescription>
           </>
         )}
@@ -95,14 +95,14 @@ function PaymentSuccessContent() {
                 />
               </svg>
             </div>
-            <CardTitle className="text-red-600">支付确认失败</CardTitle>
-            <CardDescription>请联系客服或稍后重试</CardDescription>
+            <CardTitle className="text-red-600">Payment not confirmed</CardTitle>
+            <CardDescription>Contact support or try again later</CardDescription>
           </>
         )}
       </CardHeader>
       <CardContent className="flex justify-center">
         <Link href="/">
-          <Button>返回 Dashboard</Button>
+          <Button>Back to dashboard</Button>
         </Link>
       </CardContent>
     </Card>
@@ -115,7 +115,7 @@ export default function PaymentSuccess() {
       <Suspense fallback={
         <Card className="w-full max-w-md border border-slate-200/90 bg-white/80 text-slate-900 backdrop-blur-xl ring-1 ring-slate-200/50 shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle>加载中...</CardTitle>
+            <CardTitle>Loading…</CardTitle>
           </CardHeader>
         </Card>
       }>

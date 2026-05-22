@@ -495,7 +495,7 @@ class APIClient {
       const count = res.data?.length ?? 0;
       return { ok: true, modelCount: count };
     } catch (e) {
-      const message = e instanceof Error ? e.message : "连接失败";
+      const message = e instanceof Error ? e.message : "Connection failed";
       return { ok: false, message };
     }
   }

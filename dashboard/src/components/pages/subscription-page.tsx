@@ -45,12 +45,12 @@ export function SubscriptionPage() {
           await refreshProfile();
           const r = await apiClient.getSubscription();
           setSub(r.subscription);
-          alert(res.message || "已开通");
+          alert(res.message || "Plan activated");
         } else if (res.checkout_url) {
           window.location.href = res.checkout_url;
         }
       } catch (e) {
-        alert(e instanceof Error ? e.message : "订阅失败");
+        alert(e instanceof Error ? e.message : "Subscription failed");
       } finally {
         setLoading(false);
       }
@@ -60,10 +60,11 @@ export function SubscriptionPage() {
   if (!enabled && plans.length === 0) {
     return (
       <div className="space-y-4">
-        <h1 className="text-lg font-medium text-slate-900">订阅</h1>
+        <h1 className="text-lg font-medium text-slate-900">Subscription</h1>
         <p className="text-sm text-slate-600">
-          服务端未启用订阅（<code className="text-xs">SUBSCRIPTIONS_ENABLED=false</code>
-          ）。仅使用账户充值与全局模型配置即可。
+          Subscriptions are disabled on this server (
+          <code className="text-xs">SUBSCRIPTIONS_ENABLED=false</code>). Use account top-up and global
+          model settings.
         </p>
       </div>
     );
@@ -72,28 +73,26 @@ export function SubscriptionPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-medium text-slate-900">订阅档位</h1>
+        <h1 className="text-lg font-medium text-slate-900">Plans</h1>
         <p className="mt-2 text-sm text-slate-600">
-          选择档位以解锁可用模型与本周期消费上限；实际扣费仍从账户余额扣除。
+          Choose a plan for allowed models and period spend cap. Usage is still charged from your account balance.
         </p>
       </div>
 
       {isAuthenticated && sub?.active && (
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className="text-sm">当前订阅</CardTitle>
+            <CardTitle className="text-sm">Current plan</CardTitle>
             <CardDescription>
-              到期：{new Date(sub.period_end).toLocaleDateString("zh-CN")}
+              Renews: {new Date(sub.period_end).toLocaleDateString("en-US")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
-              档位 <Badge>{sub.plan_id}</Badge> · 已用 {formatUsd(sub.spent_this_period, 2)} / 上限{" "}
+              Plan <Badge>{sub.plan_id}</Badge> · Spent {formatUsd(sub.spent_this_period, 2)} / cap{" "}
               {formatUsd(sub.monthly_spend_cap_usd, 2)}
             </p>
-            <p className="text-slate-600">
-              可用模型：{sub.allowed_models.join(", ")}
-            </p>
+            <p className="text-slate-600">Models: {sub.allowed_models.join(", ")}</p>
           </CardContent>
         </Card>
       )}
@@ -105,14 +104,14 @@ export function SubscriptionPage() {
               <CardTitle className="text-base capitalize">{plan.id}</CardTitle>
               <CardDescription>
                 {plan.monthly_price_usd <= 0
-                  ? "免费"
-                  : `${formatUsd(plan.monthly_price_usd, 2)} / 周期`}
+                  ? "Free"
+                  : `${formatUsd(plan.monthly_price_usd, 2)} / period`}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <p>消费上限：{formatUsd(plan.monthly_spend_cap_usd, 2)} / 周期</p>
+              <p>Spend cap: {formatUsd(plan.monthly_spend_cap_usd, 2)} / period</p>
               {plan.included_balance_usd > 0 && (
-                <p>开通赠送余额：{formatUsd(plan.included_balance_usd, 2)}</p>
+                <p>Included credit: {formatUsd(plan.included_balance_usd, 2)}</p>
               )}
               <div className="flex flex-wrap gap-1">
                 {plan.allowed_models.map((m) => (
@@ -128,10 +127,10 @@ export function SubscriptionPage() {
                 onClick={() => subscribe(plan.id)}
               >
                 {isGuest
-                  ? "登录后订阅"
+                  ? "Sign in to subscribe"
                   : plan.monthly_price_usd <= 0
-                    ? "免费开通"
-                    : "订阅此档位"}
+                    ? "Activate free plan"
+                    : "Subscribe"}
               </Button>
             </CardContent>
           </Card>

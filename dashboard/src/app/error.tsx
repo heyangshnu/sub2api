@@ -16,17 +16,17 @@ export default function Error({
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
-      <p className="text-lg font-semibold text-slate-900">页面加载出错</p>
+      <p className="text-lg font-semibold text-slate-900">Something went wrong</p>
       <p className="max-w-md text-sm text-slate-600">
         {error.message ||
-          "控制台组件异常。请打开浏览器开发者工具 (F12) 查看 Console 中的红色报错。"}
+          "A console component failed. Open DevTools (F12) and check the Console tab for errors."}
       </p>
       <div className="flex gap-3">
         <Button type="button" onClick={() => reset()}>
-          重试
+          Try again
         </Button>
         <Button type="button" variant="outline" onClick={() => window.location.reload()}>
-          刷新页面
+          Reload page
         </Button>
       </div>
     </div>

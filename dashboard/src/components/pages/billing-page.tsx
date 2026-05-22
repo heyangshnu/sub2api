@@ -23,7 +23,7 @@ const glassCard =
 type Tab = "topup" | "consume";
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString("zh-CN");
+  return new Date(dateStr).toLocaleString("en-US");
 }
 
 export function BillingPage() {
@@ -53,16 +53,16 @@ export function BillingPage() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>时间</TableHead>
-          <TableHead>类型</TableHead>
-          <TableHead>模型</TableHead>
-          <TableHead className="text-right">金额</TableHead>
+          <TableHead>Time</TableHead>
+          <TableHead>Type</TableHead>
+          <TableHead>Model</TableHead>
+          <TableHead className="text-right">Amount</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         <TableRow>
           <TableCell colSpan={4} className="text-center text-slate-500">
-            登录后查看账单明细
+            Sign in to view billing details
           </TableCell>
         </TableRow>
       </TableBody>
@@ -72,8 +72,8 @@ export function BillingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-medium text-slate-900">账单</h1>
-        <p className="mt-2 text-sm text-slate-600">充值入账与 API/对话消费明细</p>
+        <h1 className="text-lg font-medium text-slate-900">Billing</h1>
+        <p className="mt-2 text-sm text-slate-600">Top-ups and API / chat usage</p>
       </div>
 
       <div className="flex gap-2">
@@ -89,33 +89,33 @@ export function BillingPage() {
               if (isGuest) return;
             }}
           >
-            {t === "consume" ? "消费账单" : "充值账单"}
+            {t === "consume" ? "Usage" : "Top-ups"}
           </Button>
         ))}
       </div>
 
       <Card className={glassCard}>
         <CardHeader>
-          <CardTitle className="text-sm">{tab === "consume" ? "消费记录" : "充值记录"}</CardTitle>
+          <CardTitle className="text-sm">{tab === "consume" ? "Usage" : "Top-ups"}</CardTitle>
           <CardDescription>
-            {isGuest ? "示例结构" : `共 ${total} 条`}
+            {isGuest ? "Preview" : `${total} entries`}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isGuest ? (
             guestTable
           ) : transactions.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500">暂无记录</p>
+            <p className="py-8 text-center text-sm text-slate-500">No records</p>
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>时间</TableHead>
-                    <TableHead>类型</TableHead>
-                    <TableHead>模型</TableHead>
-                    <TableHead className="text-right">金额</TableHead>
-                    <TableHead className="text-right">余额</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Model</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -150,7 +150,7 @@ export function BillingPage() {
                     disabled={offset === 0}
                     onClick={() => requireAuth(() => setOffset(Math.max(0, offset - limit)))}
                   >
-                    上一页
+                    Previous
                   </Button>
                   <Button
                     variant="outline"
@@ -158,7 +158,7 @@ export function BillingPage() {
                     disabled={offset + limit >= total}
                     onClick={() => requireAuth(() => setOffset(offset + limit))}
                   >
-                    下一页
+                    Next
                   </Button>
                 </div>
               )}
@@ -170,7 +170,7 @@ export function BillingPage() {
               className="mt-4 w-full"
               onClick={() => requireAuth(() => {})}
             >
-              登录查看账单
+              Sign in to view billing
             </Button>
           )}
         </CardContent>

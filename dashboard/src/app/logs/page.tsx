@@ -24,7 +24,7 @@ const glassCard =
   "border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString("zh-CN");
+  return new Date(dateStr).toLocaleString("en-US");
 }
 
 function LogsInner() {
@@ -62,7 +62,7 @@ function LogsInner() {
       setLogs(res.logs || []);
       setTotal(res.total);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载失败");
+      setError(e instanceof Error ? e.message : "Failed to load");
       setLogs([]);
       setTotal(0);
     } finally {
@@ -89,10 +89,10 @@ function LogsInner() {
     return (
       <ConsoleShell>
         <div className="mx-auto max-w-xl space-y-4 py-8">
-          <h1 className="text-lg font-medium text-slate-900">请求日志</h1>
-          <p className="text-sm text-slate-600">登录后可按 API Key 查看最近调用记录。</p>
+          <h1 className="text-lg font-medium text-slate-900">Request logs</h1>
+          <p className="text-sm text-slate-600">Sign in to view recent API calls per key.</p>
           <Button type="button" onClick={() => openAuthDialog("login")}>
-            登录
+            Sign in
           </Button>
         </div>
       </ConsoleShell>
@@ -103,10 +103,10 @@ function LogsInner() {
     return (
       <ConsoleShell>
         <div className="mx-auto max-w-xl space-y-4">
-          <h1 className="text-lg font-medium text-slate-900">请求日志</h1>
-          <p className="text-sm text-slate-600">请先在 API Keys 页创建 Key，产生调用后即可查看日志。</p>
+          <h1 className="text-lg font-medium text-slate-900">Request logs</h1>
+          <p className="text-sm text-slate-600">Create an API key first, then logs appear after calls.</p>
           <Link href="/keys" className={cn(buttonVariants({ variant: "outline" }))}>
-            前往 API Keys
+            Go to API Keys
           </Link>
         </div>
       </ConsoleShell>
@@ -116,13 +116,13 @@ function LogsInner() {
   return (
     <ConsoleShell>
       <div className="mx-auto max-w-6xl space-y-6">
-        <h1 className="text-lg font-semibold text-slate-900 md:text-xl">请求日志</h1>
+        <h1 className="text-lg font-semibold text-slate-900 md:text-xl">Request logs</h1>
         <Card className={glassCard}>
           <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <CardTitle className="text-slate-900">筛选</CardTitle>
+              <CardTitle className="text-slate-900">Filter</CardTitle>
               <CardDescription className="text-slate-600">
-                按 API Key 查看最近调用（不含请求正文）
+                Recent calls by API key (request body not stored)
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -153,9 +153,9 @@ function LogsInner() {
 
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className="text-slate-900">记录</CardTitle>
+            <CardTitle className="text-slate-900">Entries</CardTitle>
             <CardDescription className="text-slate-600">
-              共 {total} 条 · 本页 {logs.length} 条
+              {total} total · {logs.length} on this page
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -170,17 +170,17 @@ function LogsInner() {
                 <Skeleton className="h-10 w-full rounded-lg bg-slate-200/70" />
               </div>
             ) : logs.length === 0 ? (
-              <p className="py-12 text-center text-slate-500">暂无日志（或尚未产生调用）</p>
+              <p className="py-12 text-center text-slate-500">No logs yet</p>
             ) : (
               <>
                 <Table>
                   <TableHeader>
                     <TableRow className="border-slate-200 hover:bg-transparent">
-                      <TableHead className="text-slate-600">时间</TableHead>
-                      <TableHead className="text-slate-600">模型</TableHead>
-                      <TableHead className="text-slate-600">流式</TableHead>
-                      <TableHead className="text-slate-600">结果</TableHead>
-                      <TableHead className="text-right text-slate-600">耗时 ms</TableHead>
+                      <TableHead className="text-slate-600">Time</TableHead>
+                      <TableHead className="text-slate-600">Model</TableHead>
+                      <TableHead className="text-slate-600">Stream</TableHead>
+                      <TableHead className="text-slate-600">Outcome</TableHead>
+                      <TableHead className="text-right text-slate-600">Latency ms</TableHead>
                       <TableHead className="font-mono text-xs text-slate-600">request_id</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -191,7 +191,7 @@ function LogsInner() {
                           {formatDate(row.created_at)}
                         </TableCell>
                         <TableCell className="text-slate-800">{row.model || "—"}</TableCell>
-                        <TableCell className="text-slate-600">{row.stream ? "是" : "否"}</TableCell>
+                        <TableCell className="text-slate-600">{row.stream ? "Yes" : "No"}</TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="border border-slate-200 font-normal">
                             {row.outcome}
@@ -217,7 +217,7 @@ function LogsInner() {
                       onClick={() => setOffset(Math.max(0, offset - limit))}
                       disabled={offset === 0}
                     >
-                      上一页
+                      Previous
                     </Button>
                     <span className="flex items-center px-4 text-sm text-slate-600">
                       {Math.floor(offset / limit) + 1} / {Math.ceil(total / limit) || 1}
@@ -229,7 +229,7 @@ function LogsInner() {
                       onClick={() => setOffset(offset + limit)}
                       disabled={offset + limit >= total}
                     >
-                      下一页
+                      Next
                     </Button>
                   </div>
                 )}

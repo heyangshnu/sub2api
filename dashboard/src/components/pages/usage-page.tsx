@@ -34,7 +34,7 @@ function UsageBars({ points }: { points: DailyUsagePoint[] }) {
             <div
               key={p.date}
               className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
-              title={`${p.date}: $${p.total_consumed.toFixed(4)} · ${p.request_count} 次`}
+              title={`${p.date}: $${p.total_consumed.toFixed(4)} · ${p.request_count} requests`}
             >
               <div
                 className="w-full max-w-[14px] rounded-t-md bg-gradient-to-t from-sky-600 to-sky-400"
@@ -120,33 +120,33 @@ export function UsagePage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-lg font-medium text-slate-900">用量信息</h1>
+          <h1 className="text-lg font-medium text-slate-900">Usage</h1>
           <p className="mt-2 text-sm text-slate-600">
-            OpenAI 兼容 API 网关 · 按 Token 计费 · 支持多模型与 API Key 分账统计
+            OpenAI-compatible API gateway · Token-based billing · Per-key usage stats
           </p>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <StatCard label="账户余额（USD）" value="—" />
-          <StatCard label="累计消费（USD）" value="—" />
-          <StatCard label="请求次数" value="—" />
+          <StatCard label="Account balance (USD)" value="—" />
+          <StatCard label="Total spent (USD)" value="—" />
+          <StatCard label="Requests" value="—" />
         </div>
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">近 14 日消费趋势</CardTitle>
+            <CardTitle className="text-sm font-medium">Last 14 days</CardTitle>
             <CardDescription className="text-sm text-slate-600">
-              登录后查看您的真实用量与按 Key 统计
+              Sign in to view your usage and per-key breakdown
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/80 text-sm text-slate-500">
-              示例图表区域
+              Sample chart area
             </div>
             <Button
               type="button"
               className="mt-4 bg-slate-900 hover:bg-slate-800"
               onClick={() => openAuthDialog("login")}
             >
-              登录查看我的用量
+              Sign in to view usage
             </Button>
           </CardContent>
         </Card>
@@ -157,20 +157,20 @@ export function UsagePage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-medium text-slate-900">用量信息</h1>
+        <h1 className="text-lg font-medium text-slate-900">Usage</h1>
         {chartKeyId && (
           <Link
             href={`/account/logs?key_id=${encodeURIComponent(chartKeyId)}`}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-slate-200")}
           >
-            请求日志
+            Request logs
           </Link>
         )}
       </div>
 
       {!apiKey && (
         <div className="rounded-2xl border border-sky-200 bg-sky-50/90 px-4 py-3 text-sm text-sky-950">
-          请先在{" "}
+          Create an API key on the{" "}
           <button
             type="button"
             className="font-medium underline"
@@ -178,15 +178,15 @@ export function UsagePage() {
           >
             API Keys
           </button>{" "}
-          创建 Key 以展示用量曲线（创建后会自动绑定）。
+          page to show usage charts (auto-bound after creation).
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <StatCard label="充值结余（USD）" value={formatUsd(userProfile?.balance, 2)} />
-        <StatCard label="可消费余额（USD）" value={formatUsd(userProfile?.spendable_balance, 2)} />
+        <StatCard label="Top-up balance (USD)" value={formatUsd(userProfile?.balance, 2)} />
+        <StatCard label="Spendable balance (USD)" value={formatUsd(userProfile?.spendable_balance, 2)} />
         <StatCard
-          label="累计消费（USD）"
+          label="Total spent (USD)"
           value={loading ? "…" : formatUsd(usageTotal ?? 0, 2)}
         />
       </div>
@@ -194,7 +194,7 @@ export function UsagePage() {
       {userProfile?.subscription?.active && (
         <Card className={glassCard}>
           <CardContent className="pt-4 text-sm text-slate-700">
-            当前订阅：<strong>{userProfile.subscription.plan_id}</strong> · 本周期剩余额度{" "}
+            Current plan: <strong>{userProfile.subscription.plan_id}</strong> · Remaining cap this period{" "}
             <strong>{formatUsd(userProfile.subscription.remaining_cap_usd, 2)}</strong>
           </CardContent>
         </Card>
@@ -204,9 +204,9 @@ export function UsagePage() {
         <Card className={glassCard}>
           <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <CardTitle className="text-sm font-medium">近 14 日消费（按天）</CardTitle>
+              <CardTitle className="text-sm font-medium">Daily spend (last 14 days)</CardTitle>
               <CardDescription className="mt-1 text-sm text-slate-600">
-                基于扣费流水汇总（UTC）
+                Aggregated from billing ledger (UTC)
               </CardDescription>
             </div>
             <select
@@ -225,7 +225,7 @@ export function UsagePage() {
             {dailyLoading ? (
               <Skeleton className="h-36 w-full rounded-xl" />
             ) : usagePoints.length === 0 ? (
-              <p className="py-10 text-center text-sm text-slate-500">暂无消费记录</p>
+              <p className="py-10 text-center text-sm text-slate-500">No usage in this period</p>
             ) : (
               <UsageBars points={usagePoints} />
             )}
@@ -234,7 +234,7 @@ export function UsagePage() {
       )}
 
       <p className="text-xs text-slate-500">
-        请求次数（本 Key）：{requestCount ?? "—"}
+        Requests (this key): {requestCount ?? "—"}
       </p>
     </div>
   );

@@ -8,12 +8,12 @@ import { cn } from "@/lib/utils";
 import { AuthDialog } from "@/components/auth-dialog";
 
 const NAV = [
-  { href: "/chat", label: "对话" },
-  { href: "/", label: "用量信息" },
+  { href: "/chat", label: "Chat" },
+  { href: "/", label: "Usage" },
   { href: "/keys", label: "API Keys" },
-  { href: "/topup", label: "充值" },
-  { href: "/subscription", label: "订阅" },
-  { href: "/billing", label: "账单" },
+  { href: "/topup", label: "Top-up" },
+  { href: "/subscription", label: "Subscription" },
+  { href: "/billing", label: "Billing" },
 ] as const;
 
 export function ConsoleShell({ children }: { children: React.ReactNode }) {
@@ -67,7 +67,7 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
                     {user.email}
                   </Link>
                   <Button type="button" variant="ghost" size="sm" onClick={logout}>
-                    退出
+                    Sign out
                   </Button>
                 </>
               ) : (
@@ -79,7 +79,7 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
                     className="border-slate-200"
                     onClick={() => openAuthDialog("register")}
                   >
-                    注册
+                    Sign up
                   </Button>
                   <Button
                     type="button"
@@ -87,7 +87,7 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
                     className="bg-slate-900 text-white hover:bg-slate-800"
                     onClick={() => openAuthDialog("login")}
                   >
-                    登录
+                    Sign in
                   </Button>
                 </>
               )}
@@ -97,7 +97,7 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-6">{children}</main>
         {isGuest ? (
           <p className="mx-auto max-w-6xl px-4 pb-4 text-center text-xs text-slate-500 md:px-6">
-            未登录可浏览各模块说明；实际操作需登录账户。
+            You can browse all sections while signed out. Sign in to perform actions.
           </p>
         ) : null}
       </div>

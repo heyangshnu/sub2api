@@ -15,11 +15,11 @@ import {
 import { formatUsd } from "@/lib/utils";
 
 const TOPUP_OPTIONS = [
-  { value: "5", label: "$5", description: "入门体验" },
-  { value: "10", label: "$10", description: "个人使用" },
-  { value: "20", label: "$20", description: "常规用量" },
-  { value: "50", label: "$50", description: "重度用户" },
-  { value: "100", label: "$100", description: "企业用户" },
+  { value: "5", label: "$5", description: "Starter" },
+  { value: "10", label: "$10", description: "Personal" },
+  { value: "20", label: "$20", description: "Regular" },
+  { value: "50", label: "$50", description: "Power user" },
+  { value: "100", label: "$100", description: "Team" },
 ];
 
 const glassCard =
@@ -38,7 +38,7 @@ export function TopupPage() {
         if (data.checkout_url) window.location.href = data.checkout_url;
         await refreshProfile();
       } catch (err) {
-        alert(err instanceof Error ? err.message : "支付失败");
+        alert(err instanceof Error ? err.message : "Payment failed");
       } finally {
         setLoading(false);
       }
@@ -48,16 +48,17 @@ export function TopupPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-medium text-slate-900">账户充值</h1>
+        <h1 className="text-lg font-medium text-slate-900">Top up</h1>
         <p className="mt-2 text-sm text-slate-600">
-          为账户余额充值（USD），用于 API 与首页对话按量扣费。与「订阅」不同：订阅决定可用模型与周期消费上限。
+          Add USD to your account for API and chat usage. Subscriptions (if enabled) control model access and
+          period spend caps separately.
         </p>
       </div>
 
       {isAuthenticated && userProfile && (
         <Card className={glassCard}>
           <CardContent className="pt-4 text-sm">
-            当前充值结余：<strong>{formatUsd(userProfile.balance, 2)}</strong> · 可消费{" "}
+            Top-up balance: <strong>{formatUsd(userProfile.balance, 2)}</strong> · Spendable{" "}
             <strong>{formatUsd(userProfile.spendable_balance, 2)}</strong>
           </CardContent>
         </Card>
@@ -65,13 +66,13 @@ export function TopupPage() {
 
       <Card className={glassCard}>
         <CardHeader>
-          <CardTitle className="text-sm">选择充值金额</CardTitle>
-          <CardDescription>Stripe 安全支付，到账后可用于消费</CardDescription>
+          <CardTitle className="text-sm">Select amount</CardTitle>
+          <CardDescription>Secure payment via Stripe</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Select value={amount} onValueChange={(v) => v && setAmount(v)}>
             <SelectTrigger>
-              <SelectValue placeholder="选择金额" />
+              <SelectValue placeholder="Select amount" />
             </SelectTrigger>
             <SelectContent>
               {TOPUP_OPTIONS.map((opt) => (
@@ -87,7 +88,7 @@ export function TopupPage() {
             disabled={loading}
             onClick={handleTopup}
           >
-            {isGuest ? "登录后支付" : loading ? "跳转中…" : `支付 $${amount}`}
+            {isGuest ? "Sign in to pay" : loading ? "Redirecting…" : `Pay $${amount}`}
           </Button>
         </CardContent>
       </Card>

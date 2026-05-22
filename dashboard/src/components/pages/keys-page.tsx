@@ -9,7 +9,7 @@ const glassCard =
   "border border-slate-200/90 bg-white/75 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
 
 export function KeysPage() {
-  const { isGuest, openAuthDialog, requireAuth } = useAuth();
+  const { isGuest, openAuthDialog } = useAuth();
 
   if (isGuest) {
     return (
@@ -17,22 +17,23 @@ export function KeysPage() {
         <div>
           <h1 className="text-lg font-medium text-slate-900">API Keys</h1>
           <p className="mt-2 text-sm text-slate-600">
-            创建独立 Key 调用 OpenAI 兼容接口，便于分项目统计用量与设置消费上限。
+            Create keys for OpenAI-compatible API access, per-project usage, and spend limits.
           </p>
         </div>
         <Card className={glassCard}>
           <CardHeader>
-            <CardTitle className="text-sm">接口地址</CardTitle>
+            <CardTitle className="text-sm">Base URL</CardTitle>
             <CardDescription className="font-mono text-xs">
               {process.env.NEXT_PUBLIC_API_URL || "https://api.cloudtoken.uk"}/v1
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-slate-600">
-              登录后可创建 Key；完整 Key 仅显示一次，请妥善保存。支持 IP 白名单、消费上限与连通性检测。
+              Sign in to create keys. The full key is shown only once—save it securely. IP allowlist,
+              spend limits, and connectivity checks are supported.
             </p>
             <Button type="button" onClick={() => openAuthDialog("login")}>
-              登录管理 API Keys
+              Sign in to manage API keys
             </Button>
           </CardContent>
         </Card>

@@ -11,17 +11,18 @@ export function ChatConsolePage() {
   if (isGuest) {
     return (
       <div className="space-y-6">
-        <h1 className="text-lg font-medium text-slate-900">AI 对话</h1>
+        <h1 className="text-lg font-medium text-slate-900">Chat</h1>
         <Card className="border border-slate-200/90 bg-white/75 shadow-lg backdrop-blur-xl">
           <CardHeader>
-            <CardTitle className="text-sm">登录后使用</CardTitle>
+            <CardTitle className="text-sm">Sign in required</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-slate-600">
-              在控制台直接对话，按 Token 从账户余额扣费；可用模型受订阅档位或系统配置限制。
+              Chat in the console; usage is billed from your account balance. Available models depend on your
+              subscription or server configuration.
             </p>
             <Button type="button" onClick={() => openAuthDialog("login")}>
-              登录开始对话
+              Sign in to chat
             </Button>
           </CardContent>
         </Card>

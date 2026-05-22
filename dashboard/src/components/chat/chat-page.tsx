@@ -62,7 +62,7 @@ export function ChatPage() {
       const id = createSessionId();
       const fresh: ChatSession = {
         id,
-        title: "新对话",
+        title: "New chat",
         messages: defaultMessages(),
         model: FALLBACK_MODELS[0],
         updatedAt: Date.now(),
@@ -110,7 +110,7 @@ export function ChatPage() {
     const id = createSessionId();
     const fresh: ChatSession = {
       id,
-      title: "新对话",
+      title: "New chat",
       messages: defaultMessages(),
       model,
       updatedAt: Date.now(),
@@ -146,7 +146,7 @@ export function ChatPage() {
     if (!text || loading || !activeId) return;
     const token = apiClient.getToken();
     if (!token) {
-      setError("未登录");
+      setError("Not signed in");
       return;
     }
     setError(null);
@@ -175,7 +175,7 @@ export function ChatPage() {
       });
       await refreshProfile();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发送失败");
+      setError(e instanceof Error ? e.message : "Send failed");
       setMessages((prev) => {
         const trimmed = prev.slice(0, -1);
         persist(trimmed, model, activeId);
@@ -231,7 +231,7 @@ export function ChatPage() {
             <div className="flex w-full gap-3 rounded-2xl border border-slate-200/90 bg-[#f5f5f7] p-2.5 shadow-sm ring-1 ring-slate-100">
               <textarea
                 className="min-h-[48px] flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] text-slate-900 outline-none placeholder:text-slate-400"
-                placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+                placeholder="Message… Enter to send, Shift+Enter for newline"
                 rows={1}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -249,12 +249,12 @@ export function ChatPage() {
                 onClick={() => void send()}
                 disabled={loading || !input.trim()}
               >
-                {loading ? "…" : "发送"}
+                {loading ? "…" : "Send"}
               </Button>
             </div>
             <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
               <label htmlFor="chat-model" className="shrink-0 text-slate-500">
-                模型
+                Model
               </label>
               <select
                 id="chat-model"

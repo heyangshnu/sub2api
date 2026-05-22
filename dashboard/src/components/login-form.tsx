@@ -135,15 +135,15 @@ export function LoginForm({
     setSuccessMessage("");
     const em = forgotEmail.trim();
     if (!em) {
-      setError("请先填写邮箱");
+      setError("Please enter your email");
       return;
     }
     try {
       await apiClient.sendResetPasswordCode(em);
-      setSuccessMessage("验证码已发送，请查收邮件");
+      setSuccessMessage("Verification code sent. Check your inbox.");
       setResetSendCooldown(60);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发送失败");
+      setError(e instanceof Error ? e.message : "Send failed");
     }
   };
 
@@ -154,24 +154,24 @@ export function LoginForm({
     setSuccessMessage("");
 
     if (resetNewPassword !== resetConfirmPassword) {
-      setError("两次输入的密码不一致");
+      setError("Passwords do not match");
       setIsLoading(false);
       return;
     }
     if (resetNewPassword.length < 6) {
-      setError("密码至少 6 位");
+      setError("Password must be at least 6 characters");
       setIsLoading(false);
       return;
     }
     const em = forgotEmail.trim();
     if (!em) {
-      setError("请先填写邮箱");
+      setError("Please enter your email");
       setIsLoading(false);
       return;
     }
     const code = resetVerificationCode.trim();
     if (!/^\d{6}$/.test(code)) {
-      setError("请填写邮件中的 6 位数字验证码");
+      setError("Enter the 6-digit code from your email");
       setIsLoading(false);
       return;
     }
@@ -181,9 +181,9 @@ export function LoginForm({
       setEmail(em);
       setPassword("");
       switchMode("login");
-      setSuccessMessage("密码已重置，请使用新密码登录");
+      setSuccessMessage("Password reset. Sign in with your new password.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "重置失败");
+      setError(err instanceof Error ? err.message : "Reset failed");
     }
     setIsLoading(false);
   };
@@ -195,7 +195,7 @@ export function LoginForm({
 
     const result = await loginWithEmail(email, password);
     if (!result.success) {
-      setError(result.error || "登录失败");
+      setError(result.error || "Sign in failed");
     } else {
       onSuccess?.();
     }
@@ -209,25 +209,25 @@ export function LoginForm({
     setSuccessMessage("");
 
     if (password !== confirmPassword) {
-      setError("两次输入的密码不一致");
+      setError("Passwords do not match");
       setIsLoading(false);
       return;
     }
 
     if (password.length < 6) {
-      setError("密码至少 6 位");
+      setError("Password must be at least 6 characters");
       setIsLoading(false);
       return;
     }
 
     if (emailVerifyEnabled && !verificationCode.trim()) {
-      setError("请填写邮箱中的 6 位验证码");
+      setError("Enter the 6-digit verification code");
       setIsLoading(false);
       return;
     }
 
     if (!termsAccepted) {
-      setError("请先阅读并同意用户服务协议");
+      setError("You must accept the User Agreement");
       setIsLoading(false);
       return;
     }
@@ -240,7 +240,7 @@ export function LoginForm({
     });
     if (result.success) {
       setPostRegisterNotice(
-        `注册成功。请使用本邮箱与密码登录；首页可对话，首次充值后可创建 API Key。`
+        `Account created. Sign in with this email and password. Top up before creating API keys.`
       );
       setSuccessMessage("");
       setError("");
@@ -250,7 +250,7 @@ export function LoginForm({
       setTermsAccepted(false);
       setMode("login");
     } else {
-      setError(result.error || "注册失败");
+      setError(result.error || "Registration failed");
     }
     setIsLoading(false);
   };
@@ -260,21 +260,21 @@ export function LoginForm({
     setSuccessMessage("");
     const em = email.trim();
     if (!em) {
-      setError("请先填写邮箱");
+      setError("Please enter your email");
       return;
     }
     if (!termsAccepted) {
-      setError("请先勾选同意用户服务协议");
+      setError("Please accept the User Agreement first");
       return;
     }
     if (sendCooldown > 0) return;
     setSendCooldown(60);
     try {
       await apiClient.sendRegisterCode(em);
-      setSuccessMessage("验证码已发送，请查收邮件");
+      setSuccessMessage("Verification code sent. Check your inbox.");
     } catch (e) {
       setSendCooldown(0);
-      setError(e instanceof Error ? e.message : "发送失败");
+      setError(e instanceof Error ? e.message : "Send failed");
     }
   };
 
@@ -325,7 +325,7 @@ export function LoginForm({
           </h1>
           {!isRegister && (
             <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-600 sm:max-w-sm">
-              OpenAI 兼容网关 · 管理 API Key、用量与计费
+              OpenAI-compatible gateway · API keys, usage & billing
             </p>
           )}
         </header>
@@ -346,7 +346,7 @@ export function LoginForm({
       >
           {mode === "login" && (
             <>
-              <h2 className="mb-6 text-lg font-semibold text-slate-900">登录账户</h2>
+              <h2 className="mb-6 text-lg font-semibold text-slate-900">Sign in</h2>
               {postRegisterNotice && (
                 <div className="mb-5 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/95 p-4 ring-1 ring-emerald-100">
                   <p className="text-sm leading-relaxed text-emerald-900">
@@ -357,14 +357,14 @@ export function LoginForm({
                     className="text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
                     onClick={() => setPostRegisterNotice("")}
                   >
-                    我知道了
+                    Got it
                   </button>
                 </div>
               )}
               <form onSubmit={handleEmailLogin} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="login-email" className="text-xs text-slate-600">
-                    邮箱
+                    Email
                   </Label>
                   <Input
                     id="login-email"
@@ -379,13 +379,13 @@ export function LoginForm({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="login-password" className="text-xs text-slate-600">
-                    密码
+                    Password
                   </Label>
                   <div className="relative">
                     <Input
                       id="login-password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="输入密码"
+                      placeholder="Enter password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className={cn(inputLight, "pr-11")}
@@ -397,7 +397,7 @@ export function LoginForm({
                       tabIndex={-1}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                       onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? (
                         <EyeOff className="size-4" />
@@ -414,7 +414,7 @@ export function LoginForm({
                       className="text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
                       onClick={() => switchMode("forgot")}
                     >
-                      忘记密码？
+                      Forgot password?
                     </button>
                   </div>
                 )}
@@ -436,17 +436,17 @@ export function LoginForm({
                   disabled={isLoading}
                   className="mt-2 flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
-                  {isLoading ? "登录中…" : "登录"}
+                  {isLoading ? "Signing in…" : "Sign in"}
                 </button>
               </form>
               <p className="mt-6 text-center text-sm text-slate-600">
-                还没有账户？{" "}
+                No account yet?{" "}
                 <button
                   type="button"
                   className="font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
                   onClick={() => switchMode("register")}
                 >
-                  立即注册
+                  Sign up
                 </button>
               </p>
             </>
@@ -454,14 +454,14 @@ export function LoginForm({
 
           {mode === "forgot" && (
             <>
-              <h2 className="mb-2 text-lg font-semibold text-slate-900">重置密码</h2>
+              <h2 className="mb-2 text-lg font-semibold text-slate-900">Reset password</h2>
               <p className="mb-6 text-sm text-slate-600">
-                向注册邮箱发送 6 位验证码，填写后设置新密码（与注册时邮箱验证方式相同）。
+                We will email a 6-digit code. Enter it below to set a new password.
               </p>
               <form onSubmit={handleResetPassword} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="forgot-email" className="text-xs text-slate-600">
-                    邮箱
+                    Email
                   </Label>
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
@@ -479,7 +479,7 @@ export function LoginForm({
                 </div>
                 <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
                   <Label htmlFor="reset-code" className="text-xs text-slate-600">
-                    邮箱验证码
+                    EmailVerification code
                   </Label>
                   <div className="flex gap-2">
                     <Input
@@ -487,7 +487,7 @@ export function LoginForm({
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
-                      placeholder="6 位数字"
+                      placeholder="6 digits"
                       maxLength={6}
                       value={resetVerificationCode}
                       onChange={(e) =>
@@ -505,23 +505,23 @@ export function LoginForm({
                       disabled={resetSendCooldown > 0}
                       onClick={handleSendResetCode}
                     >
-                      {resetSendCooldown > 0 ? `${resetSendCooldown}s` : "发送验证码"}
+                      {resetSendCooldown > 0 ? `${resetSendCooldown}s` : "Send code"}
                     </Button>
                   </div>
                   <p className="text-[11px] leading-relaxed text-slate-500">
-                    先填邮箱，点击发送验证码，将邮件中的 6 位数字填入后再设置新密码。
+                    Enter your email, send the code, then enter the 6 digits from the email.
                   </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="reset-new-pw" className="text-xs text-slate-600">
-                    新密码
+                    New password
                   </Label>
                   <div className="relative">
                     <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
                     <Input
                       id="reset-new-pw"
                       type={showResetNewPassword ? "text" : "password"}
-                      placeholder="至少 6 位"
+                      placeholder="At least 6 characters"
                       value={resetNewPassword}
                       onChange={(e) => setResetNewPassword(e.target.value)}
                       className={cn(inputLight, "pl-10 pr-11")}
@@ -534,7 +534,7 @@ export function LoginForm({
                       tabIndex={-1}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                       onClick={() => setShowResetNewPassword((v) => !v)}
-                      aria-label={showResetNewPassword ? "隐藏密码" : "显示密码"}
+                      aria-label={showResetNewPassword ? "Hide password" : "Show password"}
                     >
                       {showResetNewPassword ? (
                         <EyeOff className="size-4" />
@@ -546,14 +546,14 @@ export function LoginForm({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="reset-confirm-pw" className="text-xs text-slate-600">
-                    确认新密码
+                    Confirm new password
                   </Label>
                   <div className="relative">
                     <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
                     <Input
                       id="reset-confirm-pw"
                       type={showResetConfirmPassword ? "text" : "password"}
-                      placeholder="再次输入"
+                      placeholder="Re-enter"
                       value={resetConfirmPassword}
                       onChange={(e) => setResetConfirmPassword(e.target.value)}
                       className={cn(inputLight, "pl-10 pr-11")}
@@ -566,7 +566,7 @@ export function LoginForm({
                       tabIndex={-1}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                       onClick={() => setShowResetConfirmPassword((v) => !v)}
-                      aria-label={showResetConfirmPassword ? "隐藏密码" : "显示密码"}
+                      aria-label={showResetConfirmPassword ? "Hide password" : "Show password"}
                     >
                       {showResetConfirmPassword ? (
                         <EyeOff className="size-4" />
@@ -594,7 +594,7 @@ export function LoginForm({
                   disabled={isLoading}
                   className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
-                  {isLoading ? "提交中…" : "确认重置密码"}
+                  {isLoading ? "Submitting…" : "Reset password"}
                 </button>
               </form>
               <p className="mt-6 text-center text-sm text-slate-600">
@@ -603,7 +603,7 @@ export function LoginForm({
                   className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
                   onClick={() => switchMode("login")}
                 >
-                  返回登录
+                  Back to sign in
                 </button>
               </p>
             </>
@@ -612,13 +612,13 @@ export function LoginForm({
           {mode === "register" && (
             <>
               <h2 className="mb-4 text-center text-lg font-semibold tracking-tight text-slate-900">
-                创建账户
+                Create account
               </h2>
               <form onSubmit={handleRegister} className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2 space-y-1">
                     <Label htmlFor="reg-email" className="text-[11px] font-medium text-slate-500">
-                      邮箱
+                      Email
                     </Label>
                     <div className="relative">
                       <Mail className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -636,13 +636,13 @@ export function LoginForm({
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="reg-password" className="text-[11px] font-medium text-slate-500">
-                      密码
+                      Password
                     </Label>
                     <div className="relative">
                       <Input
                         id="reg-password"
                         type={showRegisterPassword ? "text" : "password"}
-                        placeholder="至少 6 位"
+                        placeholder="At least 6 characters"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className={cn(inputCompact, "pr-9")}
@@ -654,7 +654,7 @@ export function LoginForm({
                         tabIndex={-1}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                         onClick={() => setShowRegisterPassword((v) => !v)}
-                        aria-label={showRegisterPassword ? "隐藏密码" : "显示密码"}
+                        aria-label={showRegisterPassword ? "Hide password" : "Show password"}
                       >
                         {showRegisterPassword ? (
                           <EyeOff className="size-3.5" />
@@ -666,12 +666,12 @@ export function LoginForm({
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="reg-confirm" className="text-[11px] font-medium text-slate-500">
-                      确认密码
+                      Confirm password
                     </Label>
                     <Input
                       id="reg-confirm"
                       type="password"
-                      placeholder="再次输入"
+                      placeholder="Re-enter"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       className={inputCompact}
@@ -686,7 +686,7 @@ export function LoginForm({
                         type="text"
                         inputMode="numeric"
                         autoComplete="one-time-code"
-                        placeholder="验证码"
+                        placeholder="Verification code"
                         maxLength={6}
                         value={verificationCode}
                         onChange={(e) =>
@@ -701,7 +701,7 @@ export function LoginForm({
                         disabled={sendCooldown > 0 || isLoading}
                         onClick={handleSendRegisterCode}
                       >
-                        {sendCooldown > 0 ? `${sendCooldown}s 后重发` : "发送验证码"}
+                        {sendCooldown > 0 ? `Resend in ${sendCooldown}s` : "Send code"}
                       </Button>
                     </div>
                   )}
@@ -724,7 +724,7 @@ export function LoginForm({
                     onChange={(e) => setTermsAccepted(e.target.checked)}
                   />
                   <span>
-                    我已阅读并同意{" "}
+                    I have read and agree to the {" "}
                     <Link
                       href="/terms"
                       target="_blank"
@@ -732,9 +732,9 @@ export function LoginForm({
                       className="font-medium text-emerald-700 underline hover:text-emerald-800"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      《用户服务协议与隐私说明》
+                      User Agreement & Privacy Notice
                     </Link>
-                    （版本 {termsVersion}）
+                    (version {termsVersion})
                   </span>
                 </label>
                 <button
@@ -742,17 +742,17 @@ export function LoginForm({
                   disabled={isLoading || !termsAccepted}
                   className="flex h-10 w-full items-center justify-center rounded-full bg-slate-900 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {isLoading ? "创建中…" : "注册"}
+                  {isLoading ? "Creating…" : "Sign up"}
                 </button>
               </form>
               <p className="mt-4 text-center text-xs text-slate-500">
-                已有账户？{" "}
+                Already have an account?{" "}
                 <button
                   type="button"
                   className="font-medium text-slate-900 hover:underline"
                   onClick={() => switchMode("login")}
                 >
-                  登录
+                  Sign in
                 </button>
               </p>
             </>

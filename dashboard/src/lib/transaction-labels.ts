@@ -1,13 +1,13 @@
 const TYPE_LABELS: Record<string, string> = {
-  topup: "充值",
-  admin_topup: "管理员充值",
-  monthly_grant: "月赠",
-  subscription_grant: "订阅赠送",
-  admin_adjust: "调账",
-  chat_consume: "对话消费",
-  api_consume: "API 消费",
-  consume: "消费",
-  refund: "退款",
+  topup: "Top-up",
+  admin_topup: "Admin top-up",
+  monthly_grant: "Monthly grant",
+  subscription_grant: "Subscription credit",
+  admin_adjust: "Adjustment",
+  chat_consume: "Chat usage",
+  api_consume: "API usage",
+  consume: "Usage",
+  refund: "Refund",
 };
 
 export function transactionTypeLabel(type: string): string {

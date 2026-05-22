@@ -22,12 +22,12 @@ export function ChatSidebar({ sessions, activeId, onNewChat, onSelect, onDelete 
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8F4FF] px-4 py-2.5 text-sm font-medium text-slate-800 ring-1 ring-[#d6e8ff] transition-colors hover:bg-[#dcecff]"
         >
           <MessageSquarePlus className="size-4" />
-          新对话
+          New chat
         </button>
       </div>
       <nav className="flex-1 overflow-y-auto p-2">
         {sessions.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs text-slate-500">暂无历史对话</p>
+          <p className="px-3 py-6 text-center text-xs text-slate-500">No chat history</p>
         ) : (
           <ul className="space-y-0.5">
             {sessions.map((s) => (
@@ -46,7 +46,7 @@ export function ChatSidebar({ sessions, activeId, onNewChat, onSelect, onDelete 
                 </button>
                 <button
                   type="button"
-                  aria-label="删除对话"
+                  aria-label="Delete chat"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(s.id);

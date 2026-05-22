@@ -27,7 +27,7 @@ import {
 import { formatUsd } from "@/lib/utils";
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString("zh-CN", {
+  return new Date(dateStr).toLocaleString("en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -57,7 +57,7 @@ export function ApiKeysCard() {
     const key = keyOverride ?? currentApiKey;
     if (!key) {
       setTestStatus("fail");
-      setTestMessage("请先创建 Key 或绑定到控制台后再检测");
+      setTestMessage("Create or bind a key before testing connectivity");
       return;
     }
     setTestStatus("testing");
@@ -66,7 +66,7 @@ export function ApiKeysCard() {
     const result = await apiClient.testApiKeyConnection();
     if (result.ok) {
       setTestStatus("ok");
-      setTestMessage(`连通正常，${result.modelCount} 个模型可用`);
+      setTestMessage(`OK — ${result.modelCount} models available`);
     } else {
       setTestStatus("fail");
       setTestMessage(result.message);
@@ -204,7 +204,7 @@ export function ApiKeysCard() {
           <div>
             <CardTitle className="text-slate-900">API Keys</CardTitle>
             <CardDescription className="text-slate-600">
-              创建 Key 后可在右上角充值，并用于 OpenAI 兼容接口；创建成功后将自动绑定到本控制台以展示用量。
+              After creating a key, top up from the header and use the OpenAI-compatible API. The key auto-binds here for usage stats.
             </CardDescription>
             {testMessage ? (
               <p
@@ -223,7 +223,7 @@ export function ApiKeysCard() {
               disabled={!currentApiKey || testStatus === "testing"}
               onClick={() => runConnectionTest()}
             >
-              {testStatus === "testing" ? "检测中…" : "检测连通性"}
+              {testStatus === "testing" ? "Testing…" : "Test connectivity"}
             </Button>
             <Button variant="outline" size="sm" onClick={() => refreshKeys()}>
               Refresh
@@ -235,7 +235,7 @@ export function ApiKeysCard() {
                   disabled={userProfile ? !userProfile.can_create_key : false}
                   title={
                     userProfile && !userProfile.can_create_key
-                      ? "请先完成首次账户充值"
+                      ? "Complete your first top-up first"
                       : undefined
                   }
                   onClick={() => requireAuth(() => setCreateOpen(true))}
@@ -273,7 +273,7 @@ export function ApiKeysCard() {
                         disabled={testStatus === "testing"}
                         onClick={() => newKey && runConnectionTest(newKey)}
                       >
-                        {testStatus === "testing" ? "检测中…" : "测试 Key 连通性"}
+                        {testStatus === "testing" ? "Testing…" : "Test key connectivity"}
                       </Button>
                       <Button onClick={handleCloseCreateDialog}>
                         I&apos;ve saved the key
@@ -312,7 +312,7 @@ export function ApiKeysCard() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="key-spend-limit">消费上限 USD（可选，≤ 账户余额）</Label>
+                      <Label htmlFor="key-spend-limit">Spend limit USD (optional, ≤ account balance)</Label>
                       <Input
                         id="key-spend-limit"
                         type="number"
@@ -320,8 +320,8 @@ export function ApiKeysCard() {
                         step="0.01"
                         placeholder={
                           userProfile
-                            ? `留空不限，充值余额 $${userProfile.balance.toFixed(2)}`
-                            : "留空表示不限"
+                            ? `Leave empty for no limit; top-up balance $${userProfile.balance.toFixed(2)}`
+                            : "Leave empty for no limit"
                         }
                         value={createSpendLimit}
                         onChange={(e) => setCreateSpendLimit(e.target.value)}

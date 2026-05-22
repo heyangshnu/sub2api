@@ -14,7 +14,7 @@ export default function TermsPage() {
             Sub2API
           </Link>
           <Link href="/register" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-            返回注册
+            Back to sign up
           </Link>
         </div>
       </header>
