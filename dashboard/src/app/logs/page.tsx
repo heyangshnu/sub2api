@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { ConsoleShell } from "@/components/console-shell";
 import { useAuth } from "@/lib/auth-context";
 import { apiClient, RequestLogEntry } from "@/lib/api";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -28,7 +29,7 @@ function formatDate(dateStr: string) {
 
 function LogsInner() {
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading, authMode, apiKeys } = useAuth();
+  const { isAuthenticated, isLoading, isGuest, authMode, apiKeys, openAuthDialog } = useAuth();
   const keyIdFromUrl = searchParams.get("key_id")?.trim() || "";
 
   const [keyId, setKeyId] = useState(keyIdFromUrl);
@@ -75,71 +76,47 @@ function LogsInner() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-6xl space-y-6 px-6 py-10 md:px-8">
-        <Skeleton className="h-10 w-48 rounded-xl bg-slate-200/80" />
-        <Skeleton className="h-64 rounded-2xl bg-slate-200/70" />
-      </div>
+      <ConsoleShell>
+        <div className="mx-auto max-w-6xl space-y-6">
+          <Skeleton className="h-10 w-48 rounded-xl bg-slate-200/80" />
+          <Skeleton className="h-64 rounded-2xl bg-slate-200/70" />
+        </div>
+      </ConsoleShell>
     );
   }
 
-  if (!isAuthenticated || authMode !== "jwt") {
+  if (isGuest || authMode !== "jwt") {
     return (
-      <div className="mx-auto max-w-xl px-6 py-16 text-center">
-        <p className="text-slate-600">请使用邮箱登录后查看请求日志。</p>
-        <Link
-          href="/"
-          className={cn(buttonVariants({ variant: "outline" }), "mt-6 inline-flex")}
-        >
-          返回首页
-        </Link>
-      </div>
+      <ConsoleShell>
+        <div className="mx-auto max-w-xl space-y-4 py-8">
+          <h1 className="text-lg font-medium text-slate-900">请求日志</h1>
+          <p className="text-sm text-slate-600">登录后可按 API Key 查看最近调用记录。</p>
+          <Button type="button" onClick={() => openAuthDialog("login")}>
+            登录
+          </Button>
+        </div>
+      </ConsoleShell>
     );
   }
 
   if (apiKeys.length === 0) {
     return (
-      <div className="min-h-screen">
-        <header className="border-b border-slate-200/80 bg-white/60 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4 md:px-8">
-            <Link
-              href="/"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-slate-700")}
-            >
-              ← 控制台
-            </Link>
-            <h1 className="text-lg font-semibold text-slate-900">请求日志</h1>
-          </div>
-        </header>
-        <main className="mx-auto max-w-xl px-6 py-16 text-center">
-          <p className="text-slate-600">请先在控制台创建 API Key，产生调用后即可查看日志。</p>
-          <Link
-            href="/"
-            className={cn(buttonVariants({ variant: "outline" }), "mt-6 inline-flex")}
-          >
-            返回首页
+      <ConsoleShell>
+        <div className="mx-auto max-w-xl space-y-4">
+          <h1 className="text-lg font-medium text-slate-900">请求日志</h1>
+          <p className="text-sm text-slate-600">请先在 API Keys 页创建 Key，产生调用后即可查看日志。</p>
+          <Link href="/keys" className={cn(buttonVariants({ variant: "outline" }))}>
+            前往 API Keys
           </Link>
-        </main>
-      </div>
+        </div>
+      </ConsoleShell>
     );
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-200/80 bg-white/60 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4 md:px-8">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-slate-700")}
-            >
-              ← 控制台
-            </Link>
-            <h1 className="text-lg font-semibold text-slate-900 md:text-xl">请求日志</h1>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl space-y-6 px-6 py-8 md:px-8">
+    <ConsoleShell>
+      <div className="mx-auto max-w-6xl space-y-6">
+        <h1 className="text-lg font-semibold text-slate-900 md:text-xl">请求日志</h1>
         <Card className={glassCard}>
           <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -260,8 +237,8 @@ function LogsInner() {
             )}
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </ConsoleShell>
   );
 }
 

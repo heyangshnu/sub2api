@@ -83,6 +83,8 @@ type User struct {
 	HasPaid               bool       `json:"has_paid" db:"has_paid"`
 	FirstPaidAt           *time.Time `json:"first_paid_at,omitempty" db:"first_paid_at"`
 	LastMonthlyGrantMonth string     `json:"last_monthly_grant_month,omitempty" db:"last_monthly_grant_month"`
+	TermsAcceptedAt       *time.Time `json:"terms_accepted_at,omitempty" db:"terms_accepted_at"`
+	TermsVersion          string     `json:"terms_version,omitempty" db:"terms_version"`
 	CreatedAt             time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt             time.Time  `json:"updated_at" db:"updated_at"`
 }
@@ -98,6 +100,31 @@ type UserProfile struct {
 	HasPaid          bool    `json:"has_paid"`
 	CanCreateKey     bool    `json:"can_create_key"`
 	Currency         string  `json:"currency"`
+	Subscription     *UserSubscriptionView `json:"subscription,omitempty"`
+}
+
+// UserSubscription is persisted per user (Redis).
+type UserSubscription struct {
+	PlanID      string    `json:"plan_id"`
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+	SpentUSD    float64   `json:"spent_usd"`
+}
+
+// UserSubscriptionView is returned to the dashboard.
+type UserSubscriptionView struct {
+	PlanID             string    `json:"plan_id"`
+	MonthlyPriceUSD    float64   `json:"monthly_price_usd"`
+	MonthlySpendCapUSD float64   `json:"monthly_spend_cap_usd"`
+	SpentThisPeriod    float64   `json:"spent_this_period"`
+	RemainingCapUSD    float64   `json:"remaining_cap_usd"`
+	AllowedModels      []string  `json:"allowed_models"`
+	PeriodEnd          time.Time `json:"period_end"`
+	Active             bool      `json:"active"`
+}
+
+type SubscriptionCheckoutRequest struct {
+	PlanID string `json:"plan_id" binding:"required"`
 }
 
 type UpdateProfileRequest struct {
@@ -110,16 +137,16 @@ type ChangePasswordRequest struct {
 }
 
 type RegisterRequest struct {
-	Email              string `json:"email" binding:"required,email"`
-	Password           string `json:"password" binding:"required,min=6"`
-	Name               string `json:"name,omitempty"`
-	InviteCode         string `json:"invite_code,omitempty"`
-	VerificationCode   string `json:"verification_code,omitempty"` // required when server has EMAIL_VERIFY_ENABLED=true
+	Email            string `json:"email" binding:"required,email"`
+	Password         string `json:"password" binding:"required,min=6"`
+	Name             string `json:"name,omitempty"`
+	VerificationCode string `json:"verification_code,omitempty"` // required when server has EMAIL_VERIFY_ENABLED=true
+	TermsAccepted    bool   `json:"terms_accepted"`
+	TermsVersion     string `json:"terms_version" binding:"required"`
 }
 
 type SendRegisterCodeRequest struct {
-	Email      string `json:"email" binding:"required,email"`
-	InviteCode string `json:"invite_code,omitempty"`
+	Email string `json:"email" binding:"required,email"`
 }
 
 // SendResetPasswordCodeRequest is POST /auth/send-reset-password-code (same shape as register code).
@@ -170,7 +197,7 @@ type Transaction struct {
 	ID              string    `json:"id" db:"id"`
 	UserID          string    `json:"user_id" db:"user_id"`
 	KeyID           string    `json:"key_id,omitempty" db:"key_id"`
-	Type            string    `json:"type" db:"type"` // topup, monthly_grant, chat_consume, api_consume, refund
+	Type            string    `json:"type" db:"type"` // topup, admin_topup, monthly_grant, chat_consume, api_consume, admin_adjust, refund
 	Amount          float64   `json:"amount" db:"amount"`
 	BalanceBefore   float64   `json:"balance_before" db:"balance_before"`
 	BalanceAfter    float64   `json:"balance_after" db:"balance_after"`
@@ -179,7 +206,23 @@ type Transaction struct {
 	OutputTokens    int       `json:"output_tokens,omitempty" db:"output_tokens"`
 	RequestID       string    `json:"request_id,omitempty" db:"request_id"`
 	StripePaymentID string    `json:"stripe_payment_id,omitempty" db:"stripe_payment_id"`
+	Note            string    `json:"note,omitempty" db:"note"`
+	Actor           string    `json:"actor,omitempty" db:"actor"` // system, user, admin, stripe_webhook
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+}
+
+// AdminAdjustBalanceRequest PATCH /admin/users/:id/balance
+type AdminAdjustBalanceRequest struct {
+	SpendableBalance *float64 `json:"spendable_balance"`
+	RechargedBalance *float64 `json:"recharged_balance"`
+	AdjustAmount     *float64 `json:"adjust_amount"`
+	Note             string   `json:"note"`
+}
+
+// AdminSetStatusRequest PATCH /admin/users/:id/status
+type AdminSetStatusRequest struct {
+	Status string `json:"status" binding:"required"`
+	Note   string `json:"note"`
 }
 
 // DailyUsagePoint aggregates per-day consume amounts (UTC date) for Dashboard charts.
@@ -191,14 +234,20 @@ type DailyUsagePoint struct {
 
 // RequestLogEntry is a lightweight chat audit row (no prompt / response body).
 type RequestLogEntry struct {
-	ID        string    `json:"id"`
-	KeyID     string    `json:"key_id"`
-	RequestID string    `json:"request_id"`
-	Model     string    `json:"model"`
-	Stream    bool      `json:"stream"`
-	Outcome   string    `json:"outcome"` // success, insufficient_balance, upstream_error, client_error, stream_error, internal_error
-	LatencyMs int64     `json:"latency_ms"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	UserID        string    `json:"user_id,omitempty"`
+	KeyID         string    `json:"key_id"`
+	RequestID     string    `json:"request_id"`
+	Model         string    `json:"model"`
+	Stream        bool      `json:"stream"`
+	Outcome       string    `json:"outcome"` // success, insufficient_balance, upstream_error, client_error, stream_error, internal_error
+	InputTokens   int       `json:"input_tokens,omitempty"`
+	OutputTokens  int       `json:"output_tokens,omitempty"`
+	ChargedUSD    float64   `json:"charged_usd,omitempty"`
+	LedgerEntryID string    `json:"ledger_entry_id,omitempty"`
+	LatencyMs     int64     `json:"latency_ms"`
+	ClientIP      string    `json:"client_ip,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // ==================== Model Pricing ====================

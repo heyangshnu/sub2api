@@ -20,6 +20,7 @@ import (
 type ChatHandler struct {
 	providerService *service.ProviderService
 	billingService  *service.BillingService
+	subService      *service.SubscriptionService
 	store           store.Store
 	cfg             *config.Config
 }
@@ -28,9 +29,19 @@ func NewChatHandler(ps *service.ProviderService, bs *service.BillingService, s s
 	return &ChatHandler{
 		providerService: ps,
 		billingService:  bs,
+		subService:      service.NewSubscriptionService(s, cfg),
 		store:           s,
 		cfg:             cfg,
 	}
+}
+
+func (h *ChatHandler) respondSubscriptionError(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	status, typ, msg := service.SubscriptionAPIError(err)
+	c.JSON(status, model.NewAPIError(typ, msg))
+	return true
 }
 
 func (h *ChatHandler) appendChatAudit(c *gin.Context, apiKey *model.APIKey, modelName string, stream bool, outcome string, startAt time.Time, requestID string) {
@@ -85,6 +96,13 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 	if apiKey == nil {
 		c.JSON(http.StatusUnauthorized, model.NewAPIError("authentication_error", "API key required"))
 		return
+	}
+
+	if err := h.subService.EnforceBeforeRequest(c.Request.Context(), apiKey.UserID, req.Model, estimatedCost); err != nil {
+		h.appendChatAudit(c, apiKey, req.Model, req.Stream, "subscription_denied", startAt, reqID)
+		if h.respondSubscriptionError(c, err) {
+			return
+		}
 	}
 
 	// Pre-deduct from user account (optional per-key spend limit)
@@ -148,7 +166,23 @@ func (h *ChatHandler) DashboardChatCompletions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid request body: "+err.Error()))
 		return
 	}
-	if h.cfg != nil && len(h.cfg.ChatEnabledModels) > 0 {
+	userID, _ := c.Get("user_id")
+	uid := userID.(string)
+
+	startAt := time.Now()
+	requestID, _ := c.Get("request_id")
+	reqID := fmt.Sprintf("%v", requestID)
+
+	estimatedTokens := service.CountInputTokens(req.Messages)
+	estimatedCost := h.billingService.EstimateCost(req.Model, estimatedTokens)
+
+	if h.subService.Enabled() {
+		if err := h.subService.EnforceBeforeRequest(c.Request.Context(), uid, req.Model, estimatedCost); err != nil {
+			if h.respondSubscriptionError(c, err) {
+				return
+			}
+		}
+	} else if h.cfg != nil && len(h.cfg.ChatEnabledModels) > 0 {
 		allowed := false
 		for _, m := range h.cfg.ChatEnabledModels {
 			if m == req.Model {
@@ -161,15 +195,7 @@ func (h *ChatHandler) DashboardChatCompletions(c *gin.Context) {
 			return
 		}
 	}
-	userID, _ := c.Get("user_id")
-	uid := userID.(string)
 
-	startAt := time.Now()
-	requestID, _ := c.Get("request_id")
-	reqID := fmt.Sprintf("%v", requestID)
-
-	estimatedTokens := service.CountInputTokens(req.Messages)
-	estimatedCost := h.billingService.EstimateCost(req.Model, estimatedTokens)
 	grantUSD := 0.0
 	if h.cfg != nil {
 		grantUSD = h.cfg.AccountMonthlyGrantUSD
@@ -224,6 +250,7 @@ func (h *ChatHandler) handleNonStreamResponseJWT(c *gin.Context, resp *http.Resp
 	}
 	actualCost := h.billingService.CalculateActualCost(modelName, openaiResp.Usage)
 	_ = h.billingService.FinalizeForChat(c.Request.Context(), userID, preDeducted, actualCost, openaiResp.Usage, modelName, requestID)
+	_ = h.subService.RecordSpend(c.Request.Context(), userID, actualCost)
 	respJSON, _ := json.Marshal(openaiResp)
 	c.Data(http.StatusOK, "application/json", respJSON)
 }
@@ -250,6 +277,7 @@ func (h *ChatHandler) handleStreamResponseJWT(c *gin.Context, resp *http.Respons
 		u = model.Usage{TotalTokens: 0}
 	}
 	_ = h.billingService.FinalizeForChat(c.Request.Context(), userID, preDeducted, actualCost, u, modelName, requestID)
+	_ = h.subService.RecordSpend(c.Request.Context(), userID, actualCost)
 	_ = err
 	_ = startAt
 }
@@ -299,6 +327,7 @@ func (h *ChatHandler) handleNonStreamResponse(c *gin.Context, resp *http.Respons
 	if err := h.billingService.FinalizeForAPI(c.Request.Context(), apiKey, preDeducted, actualCost, openaiResp.Usage, modelName, requestID); err != nil {
 		log.Printf("[%s] Failed to finalize billing: %v", requestID, err)
 	}
+	_ = h.subService.RecordSpend(c.Request.Context(), apiKey.UserID, actualCost)
 
 	log.Printf("[%s] Response: tokens=%d (in=%d, out=%d), actual_cost=%.6f",
 		requestID, openaiResp.Usage.TotalTokens, openaiResp.Usage.PromptTokens, openaiResp.Usage.CompletionTokens, actualCost)
@@ -362,6 +391,7 @@ func (h *ChatHandler) handleStreamResponse(c *gin.Context, resp *http.Response, 
 	if err := h.billingService.FinalizeForAPI(c.Request.Context(), apiKey, preDeducted, actualCost, *usage, modelName, requestID); err != nil {
 		log.Printf("[%s] Failed to finalize billing: %v", requestID, err)
 	}
+	_ = h.subService.RecordSpend(c.Request.Context(), apiKey.UserID, actualCost)
 
 	if err != nil {
 		h.appendChatAudit(c, apiKey, modelName, true, "stream_error", startAt, requestID)

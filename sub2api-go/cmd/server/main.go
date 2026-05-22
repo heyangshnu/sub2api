@@ -89,8 +89,9 @@ func main() {
 	// Initialize handlers
 	chatHandler := handler.NewChatHandler(providerService, billingService, dataStore, cfg)
 	adminHandler := handler.NewAdminHandler(dataStore)
-	userHandler := handler.NewUserHandler(dataStore)
-	paymentHandler := handler.NewPaymentHandler(stripeService, dataStore)
+	userHandler := handler.NewUserHandler(dataStore, cfg)
+	paymentHandler := handler.NewPaymentHandler(stripeService, dataStore, cfg)
+	subscriptionHandler := handler.NewDashboardSubscriptionHandler(dataStore, stripeService, cfg)
 	authHandler := handler.NewAuthHandler(
 		dataStore,
 		cfg,
@@ -171,6 +172,9 @@ func main() {
 		dashboard.POST("/change-password", authHandler.ChangePassword)
 		dashboard.POST("/payment/checkout", accountHandler.CreateAccountCheckout)
 		dashboard.GET("/account/transactions", accountHandler.ListAccountTransactions)
+		dashboard.GET("/subscription/plans", subscriptionHandler.ListPlans)
+		dashboard.GET("/subscription", subscriptionHandler.GetSubscription)
+		dashboard.POST("/subscription/checkout", subscriptionHandler.CreateSubscriptionCheckout)
 		dashboard.POST("/chat/completions", chatHandler.DashboardChatCompletions)
 		dashboard.GET("/keys", func(c *gin.Context) {
 			userID, _ := c.Get("user_id")
@@ -190,6 +194,7 @@ func main() {
 		dashboard.DELETE("/keys/:id", dashboardHandler.DeleteKey)
 		dashboard.GET("/usage-daily", dashboardHandler.GetUsageDaily)
 		dashboard.GET("/request-logs", dashboardHandler.ListRequestLogs)
+		dashboard.GET("/models", dashboardHandler.ListModels)
 	}
 
 	// OpenAI compatible endpoints (require API key auth + rate limit + IP whitelist)
@@ -222,6 +227,11 @@ func main() {
 		admin.GET("/keys", adminHandler.ListKeys)
 		admin.GET("/keys/:id", adminHandler.GetKey)
 		admin.POST("/keys/:id/topup", adminHandler.TopupKey)
+		admin.GET("/users", adminHandler.ListUsers)
+		admin.GET("/users/:id", adminHandler.GetUser)
+		admin.PATCH("/users/:id/balance", adminHandler.AdjustUserBalance)
+		admin.PATCH("/users/:id/status", adminHandler.SetUserStatus)
+		admin.POST("/users/:id/reload-from-db", adminHandler.ReloadUserFromDB)
 	}
 
 	// Print startup info
@@ -235,6 +245,11 @@ func main() {
 	log.Printf("  Allow unknown model pricing: %v", cfg.AllowUnknownModelPricing)
 	log.Printf("  Store:      %s", storeType)
 	log.Printf("  Providers:  %d configured", len(cfg.Providers))
+	if cfg.SubscriptionsEnabled {
+		log.Printf("  Subscriptions: enabled, %d plan(s), period=%d days", len(cfg.SubscriptionPlans), cfg.SubscriptionPeriodDays)
+	} else {
+		log.Println("  Subscriptions: disabled")
+	}
 	for _, p := range cfg.Providers {
 		log.Printf("    - %s: %d models", p.Name, len(p.Models))
 	}
@@ -249,6 +264,10 @@ func main() {
 	log.Println("    POST /admin/keys           - Create API key")
 	log.Println("    GET  /admin/keys           - List API keys")
 	log.Println("    POST /admin/keys/:id/topup - Topup balance")
+	log.Println("    GET  /admin/users              - List users")
+	log.Println("    PATCH /admin/users/:id/balance - Adjust account balance (Redis+SQLite)")
+	log.Println("    PATCH /admin/users/:id/status  - Set user status")
+	log.Println("    POST /admin/users/:id/reload-from-db - Push SQLite snapshot to Redis")
 	log.Println("    POST /webhook/stripe       - Stripe webhook")
 	log.Println("    GET  /health               - Health (JSON + dependency checks)")
 	log.Println("    GET  /health/ready         - Readiness (503 if Redis down)")

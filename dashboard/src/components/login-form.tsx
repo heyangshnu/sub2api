@@ -1,15 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api";
+import { TERMS_VERSION } from "@/lib/terms";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, KeyRound, Lock, Mail, TrendingUp } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type AuthMode = "login" | "register" | "apikey" | "forgot";
+type AuthMode = "login" | "register" | "forgot";
+
+export type LoginFormProps = {
+  embedded?: boolean;
+  initialMode?: "login" | "register";
+  onSuccess?: () => void;
+  onSwitchToRegister?: () => void;
+  onSwitchToLogin?: () => void;
+};
 
 const inputLight =
   "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-200 md:text-sm";
@@ -17,25 +27,30 @@ const inputLight =
 const inputCompact =
   "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-200";
 
-export function LoginForm() {
-  const { loginWithApiKey, loginWithEmail, register } = useAuth();
+export function LoginForm({
+  embedded = false,
+  initialMode = "login",
+  onSuccess,
+  onSwitchToRegister,
+  onSwitchToLogin,
+}: LoginFormProps = {}) {
+  const { loginWithEmail, register } = useAuth();
   const envEmailVerifyHint =
     process.env.NEXT_PUBLIC_EMAIL_VERIFY_ENABLED === "true";
   const [emailVerifyEnabled, setEmailVerifyEnabled] = useState(
     envEmailVerifyHint
   );
-  const [inviteRequired, setInviteRequired] = useState<boolean | null>(null);
-  const [mode, setMode] = useState<AuthMode>("login");
+  const [termsVersion, setTermsVersion] = useState(TERMS_VERSION);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const [apiKey, setApiKey] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [sendCooldown, setSendCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
@@ -74,8 +89,8 @@ export function LoginForm() {
       .then((cfg) => {
         if (!cancelled) {
           setEmailVerifyEnabled(!!cfg.email_verify_enabled);
-          if (typeof cfg.invite_required === "boolean") {
-            setInviteRequired(cfg.invite_required);
+          if (cfg.terms_version) {
+            setTermsVersion(cfg.terms_version);
           }
         }
       })
@@ -88,6 +103,16 @@ export function LoginForm() {
   }, []);
 
   const switchMode = (next: AuthMode) => {
+    if (embedded && next === "register" && onSwitchToRegister) {
+      onSwitchToRegister();
+      setMode("register");
+      return;
+    }
+    if (embedded && next === "login" && onSwitchToLogin) {
+      onSwitchToLogin();
+      setMode("login");
+      return;
+    }
     setMode(next);
     setError("");
     setSuccessMessage("");
@@ -163,18 +188,6 @@ export function LoginForm() {
     setIsLoading(false);
   };
 
-  const handleApiKeyLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError("");
-
-    const success = await loginWithApiKey(apiKey);
-    if (!success) {
-      setError("API Key 无效");
-    }
-    setIsLoading(false);
-  };
-
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -183,6 +196,8 @@ export function LoginForm() {
     const result = await loginWithEmail(email, password);
     if (!result.success) {
       setError(result.error || "登录失败");
+    } else {
+      onSuccess?.();
     }
     setIsLoading(false);
   };
@@ -211,19 +226,18 @@ export function LoginForm() {
       return;
     }
 
-    if (inviteRequired !== false && !inviteCode.trim()) {
-      setError("请填写邀请码");
+    if (!termsAccepted) {
+      setError("请先阅读并同意用户服务协议");
       setIsLoading(false);
       return;
     }
 
-    const result = await register(
-      email,
-      password,
-      name || undefined,
-      inviteCode.trim() || undefined,
-      emailVerifyEnabled ? verificationCode.trim() : undefined
-    );
+    const result = await register(email, password, {
+      name: name || undefined,
+      verificationCode: emailVerifyEnabled ? verificationCode.trim() : undefined,
+      termsAccepted: true,
+      termsVersion,
+    });
     if (result.success) {
       setPostRegisterNotice(
         `注册成功。请使用本邮箱与密码登录；首页可对话，首次充值后可创建 API Key。`
@@ -233,7 +247,7 @@ export function LoginForm() {
       setVerificationCode("");
       setConfirmPassword("");
       setPassword("");
-      setInviteCode("");
+      setTermsAccepted(false);
       setMode("login");
     } else {
       setError(result.error || "注册失败");
@@ -245,32 +259,34 @@ export function LoginForm() {
     setError("");
     setSuccessMessage("");
     const em = email.trim();
-    const code = inviteCode.trim();
     if (!em) {
       setError("请先填写邮箱");
       return;
     }
-    if (inviteRequired !== false && !code) {
-      setError("请先填写邀请码");
+    if (!termsAccepted) {
+      setError("请先勾选同意用户服务协议");
       return;
     }
     if (sendCooldown > 0) return;
     setSendCooldown(60);
     try {
-      await apiClient.sendRegisterCode(em, code || undefined);
+      await apiClient.sendRegisterCode(em);
       setSuccessMessage("验证码已发送，请查收邮件");
     } catch (e) {
       setSendCooldown(0);
-      const msg = e instanceof Error ? e.message : "发送失败";
-      setError(
-        msg.includes("邀请码") || msg.includes("invite")
-          ? "邀请码输入有误"
-          : msg
-      );
+      setError(e instanceof Error ? e.message : "发送失败");
     }
   };
 
   const isRegister = mode === "register";
+
+  if (embedded) {
+    return (
+      <div className="px-4 py-4" data-auth-shell>
+        <div className="w-full">{renderCard()}</div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -314,12 +330,20 @@ export function LoginForm() {
           )}
         </header>
 
-        <div
-          className={cn(
-            "w-full rounded-2xl border border-slate-200/80 bg-white/90 shadow-xl shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/60",
-            isRegister ? "p-5 sm:p-6" : "p-8 sm:p-9"
-          )}
-        >
+        {renderCard()}
+      </div>
+    </div>
+  );
+
+  function renderCard() {
+    return (
+      <div
+        className={cn(
+          "w-full rounded-2xl border border-slate-200/80 bg-white/90 shadow-xl shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/60",
+          embedded ? "border-0 shadow-none ring-0" : isRegister ? "p-5 sm:p-6" : "p-8 sm:p-9",
+          embedded && "p-4"
+        )}
+      >
           {mode === "login" && (
             <>
               <h2 className="mb-6 text-lg font-semibold text-slate-900">登录账户</h2>
@@ -423,16 +447,6 @@ export function LoginForm() {
                   onClick={() => switchMode("register")}
                 >
                   立即注册
-                </button>
-              </p>
-              <p className="mt-4 text-center">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-800"
-                  onClick={() => switchMode("apikey")}
-                >
-                  <KeyRound className="size-3.5" />
-                  使用 API Key 登录
                 </button>
               </p>
             </>
@@ -665,26 +679,6 @@ export function LoginForm() {
                       autoComplete="new-password"
                     />
                   </div>
-                  <div className="col-span-2 space-y-1">
-                    <Label htmlFor="reg-invite" className="text-[11px] font-medium text-slate-500">
-                      邀请码
-                      {inviteRequired === false && (
-                        <span className="font-normal text-slate-400"> · 可不填</span>
-                      )}
-                    </Label>
-                    <Input
-                      id="reg-invite"
-                      type="text"
-                      placeholder={
-                        inviteRequired === false ? "未启用邀请码" : "请输入邀请码"
-                      }
-                      autoComplete="off"
-                      value={inviteCode}
-                      onChange={(e) => setInviteCode(e.target.value)}
-                      className={inputCompact}
-                      required={inviteRequired !== false}
-                    />
-                  </div>
                   {emailVerifyEnabled && (
                     <div className="col-span-2 flex gap-2">
                       <Input
@@ -722,9 +716,30 @@ export function LoginForm() {
                     {successMessage}
                   </p>
                 )}
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-3.5 shrink-0 rounded border-slate-300"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                  />
+                  <span>
+                    我已阅读并同意{" "}
+                    <Link
+                      href="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-emerald-700 underline hover:text-emerald-800"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      《用户服务协议与隐私说明》
+                    </Link>
+                    （版本 {termsVersion}）
+                  </span>
+                </label>
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !termsAccepted}
                   className="flex h-10 w-full items-center justify-center rounded-full bg-slate-900 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
                 >
                   {isLoading ? "创建中…" : "注册"}
@@ -743,59 +758,7 @@ export function LoginForm() {
             </>
           )}
 
-          {mode === "apikey" && (
-            <>
-              <h2 className="mb-2 text-lg font-semibold text-slate-900">API Key 登录</h2>
-              <p className="mb-6 text-sm text-slate-600">
-                直接粘贴控制台中的完整 Key，用于查看用量与余额。
-              </p>
-              <form onSubmit={handleApiKeyLogin} className="space-y-5">
-                <div className="space-y-2">
-                  <Label htmlFor="api-key" className="text-xs text-slate-600">
-                    API Key
-                  </Label>
-                  <div className="relative">
-                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
-                    <Input
-                      id="api-key"
-                      type="password"
-                      placeholder="sk-sub2api-…"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      className={cn(inputLight, "pl-10 font-mono text-xs")}
-                      required
-                    />
-                  </div>
-                </div>
-                {error && (
-                  <p
-                    role="alert"
-                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-                  >
-                    {error}
-                  </p>
-                )}
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
-                >
-                  {isLoading ? "校验中…" : "登录"}
-                </button>
-              </form>
-              <p className="mt-6 text-center text-sm text-slate-600">
-                <button
-                  type="button"
-                  className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
-                  onClick={() => switchMode("login")}
-                >
-                  返回邮箱登录
-                </button>
-              </p>
-            </>
-          )}
-        </div>
       </div>
-    </div>
-  );
+    );
+  }
 }

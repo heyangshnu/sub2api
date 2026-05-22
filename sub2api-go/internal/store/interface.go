@@ -23,6 +23,11 @@ var (
 
 	ErrPaymentRequired       = errors.New("payment required before creating api key")
 	ErrKeySpendLimitExceeded = errors.New("api key spend limit exceeded")
+
+	ErrSubscriptionRequired      = errors.New("active subscription required")
+	ErrSubscriptionCapExceeded   = errors.New("subscription monthly spend cap exceeded")
+	ErrSubscriptionModelNotAllowed = errors.New("model not allowed on current subscription plan")
+	ErrSubscriptionPlanNotFound    = errors.New("subscription plan not found")
 )
 
 // Store defines the interface for storage operations
@@ -81,6 +86,21 @@ type Store interface {
 	AddKeySpent(ctx context.Context, keyID string, amount float64) error
 	SetKeySpendLimit(ctx context.Context, keyHash string, spendLimit *float64) error
 	ListAccountTransactions(ctx context.Context, userID string, limit, offset int) ([]*model.Transaction, int, error)
+
+	// Admin (Redis+SQLite; MemoryStore returns ErrAdminNotSupported)
+	AdminListUsers(ctx context.Context, limit, offset int) ([]*model.User, int, error)
+	AdminGetUser(ctx context.Context, userID string) (*model.User, error)
+	AdminAdjustUserBalance(ctx context.Context, userID string, req model.AdminAdjustBalanceRequest) (*model.Transaction, error)
+	AdminSetUserStatus(ctx context.Context, userID, status, note string) error
+	AdminReloadUserFromDB(ctx context.Context, userID string) error
+
+	// Subscriptions (no-op when SUBSCRIPTIONS_ENABLED=false at handler layer)
+	GetUserSubscription(ctx context.Context, userID string) (*model.UserSubscription, error)
+	ActivateUserSubscription(ctx context.Context, userID, planID string, periodDays int, resetSpend bool) error
+	EnsureDefaultSubscription(ctx context.Context, userID, defaultPlanID string, periodDays int) error
+	CheckSubscriptionModel(ctx context.Context, userID, modelName string, allowed []string) error
+	CheckSubscriptionSpendCap(ctx context.Context, userID string, capUSD, additionalUSD float64) error
+	AddSubscriptionSpend(ctx context.Context, userID string, amountUSD float64) error
 }
 
 // Ensure implementations satisfy the interface

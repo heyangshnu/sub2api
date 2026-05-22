@@ -1,12 +1,12 @@
 "use client";
 
-import { Dashboard } from "@/components/dashboard";
-import { AppShell } from "@/components/app-shell";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function AccountPage() {
-  return (
-    <AppShell>
-      <Dashboard />
-    </AppShell>
-  );
+export default function AccountRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/");
+  }, [router]);
+  return null;
 }

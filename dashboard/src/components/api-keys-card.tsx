@@ -22,7 +22,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { formatUsd } from "@/lib/utils";
@@ -36,7 +35,8 @@ function formatDate(dateStr: string) {
 }
 
 export function ApiKeysCard() {
-  const { apiKeys, apiKey: currentApiKey, userProfile, refreshKeys, bindUsageApiKey } = useAuth();
+  const { apiKeys, apiKey: currentApiKey, userProfile, refreshKeys, bindUsageApiKey, requireAuth, authMode } =
+    useAuth();
   const [showKey, setShowKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -49,6 +49,29 @@ export function ApiKeysCard() {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
+
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [testMessage, setTestMessage] = useState("");
+
+  const runConnectionTest = async (keyOverride?: string) => {
+    const key = keyOverride ?? currentApiKey;
+    if (!key) {
+      setTestStatus("fail");
+      setTestMessage("请先创建 Key 或绑定到控制台后再检测");
+      return;
+    }
+    setTestStatus("testing");
+    setTestMessage("");
+    apiClient.setApiKey(key);
+    const result = await apiClient.testApiKeyConnection();
+    if (result.ok) {
+      setTestStatus("ok");
+      setTestMessage(`连通正常，${result.modelCount} 个模型可用`);
+    } else {
+      setTestStatus("fail");
+      setTestMessage(result.message);
+    }
+  };
 
   // Settings Dialog
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -65,6 +88,7 @@ export function ApiKeysCard() {
   };
 
   const handleCreateKey = async () => {
+    requireAuth(async () => {
     setCreateLoading(true);
     setCreateError("");
     try {
@@ -85,6 +109,7 @@ export function ApiKeysCard() {
       setCreateError(err instanceof Error ? err.message : "Failed to create key");
     }
     setCreateLoading(false);
+    });
   };
 
   const handleCloseCreateDialog = () => {
@@ -123,6 +148,7 @@ export function ApiKeysCard() {
   };
 
   const handleDeleteKey = async (keyId: string) => {
+    requireAuth(async () => {
     if (!confirm("Are you sure you want to delete this key? This action cannot be undone.")) {
       return;
     }
@@ -132,10 +158,11 @@ export function ApiKeysCard() {
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete key");
     }
+    });
   };
 
   // Login with API key only (no JWT): show limited view
-  if (currentApiKey && apiKeys.length === 0) {
+  if (authMode !== "jwt" && currentApiKey && apiKeys.length === 0) {
     return (
       <Card className="border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50">
         <CardHeader>
@@ -179,13 +206,29 @@ export function ApiKeysCard() {
             <CardDescription className="text-slate-600">
               创建 Key 后可在右上角充值，并用于 OpenAI 兼容接口；创建成功后将自动绑定到本控制台以展示用量。
             </CardDescription>
+            {testMessage ? (
+              <p
+                className={`text-xs mt-1 ${
+                  testStatus === "ok" ? "text-emerald-600" : testStatus === "fail" ? "text-red-600" : "text-slate-500"
+                }`}
+              >
+                {testMessage}
+              </p>
+            ) : null}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!currentApiKey || testStatus === "testing"}
+              onClick={() => runConnectionTest()}
+            >
+              {testStatus === "testing" ? "检测中…" : "检测连通性"}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => refreshKeys()}>
               Refresh
             </Button>
             <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : handleCloseCreateDialog())}>
-              <DialogTrigger>
                 <Button
                   type="button"
                   size="sm"
@@ -195,10 +238,10 @@ export function ApiKeysCard() {
                       ? "请先完成首次账户充值"
                       : undefined
                   }
+                  onClick={() => requireAuth(() => setCreateOpen(true))}
                 >
                   + Create Key
                 </Button>
-              </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>{newKey ? "Key Created" : "Create New API Key"}</DialogTitle>
@@ -223,11 +266,28 @@ export function ApiKeysCard() {
                         {copied ? "✓ Copied!" : "Copy to Clipboard"}
                       </Button>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="flex-col sm:flex-row gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={testStatus === "testing"}
+                        onClick={() => newKey && runConnectionTest(newKey)}
+                      >
+                        {testStatus === "testing" ? "检测中…" : "测试 Key 连通性"}
+                      </Button>
                       <Button onClick={handleCloseCreateDialog}>
                         I&apos;ve saved the key
                       </Button>
                     </DialogFooter>
+                    {testMessage && newKey ? (
+                      <p
+                        className={`text-xs ${
+                          testStatus === "ok" ? "text-emerald-600" : testStatus === "fail" ? "text-red-600" : ""
+                        }`}
+                      >
+                        {testMessage}
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="space-y-4">

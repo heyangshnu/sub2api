@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/app-shell";
+import { ConsoleShell } from "@/components/console-shell";
+import { useAuth } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ const fieldInput =
   "h-10 w-full max-w-md rounded-lg border border-slate-200 bg-white text-sm text-slate-900";
 
 export default function ProfilePage() {
+  const { requireAuth, isGuest, openAuthDialog } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [msg, setMsg] = useState("");
@@ -30,9 +32,23 @@ export default function ProfilePage() {
     }
   };
 
+  if (isGuest) {
+    return (
+      <ConsoleShell>
+        <div className="mx-auto max-w-2xl space-y-4">
+          <h1 className="text-lg font-medium text-slate-900">个人中心</h1>
+          <p className="text-sm text-slate-600">登录后可修改昵称与密码。</p>
+          <Button type="button" onClick={() => openAuthDialog("login")}>
+            登录
+          </Button>
+        </div>
+      </ConsoleShell>
+    );
+  }
+
   return (
-    <AppShell>
-      <div className="mx-auto w-full max-w-2xl px-6 py-8 md:px-8">
+    <ConsoleShell>
+      <div className="mx-auto w-full max-w-2xl">
         <h1 className="text-sm font-medium text-slate-900">个人中心</h1>
         <p className="mt-2 text-sm text-slate-800">修改登录密码</p>
 
@@ -69,13 +85,13 @@ export default function ProfilePage() {
           </div>
           <Button
             type="button"
-            onClick={() => void savePassword()}
+            onClick={() => requireAuth(() => void savePassword())}
             className="h-10 rounded-lg bg-slate-900 px-6 text-sm hover:bg-slate-800"
           >
             更新密码
           </Button>
         </div>
       </div>
-    </AppShell>
+    </ConsoleShell>
   );
 }

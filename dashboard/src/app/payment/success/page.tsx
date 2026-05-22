@@ -21,25 +21,18 @@ function PaymentSuccessContent() {
   }, [sessionId]);
 
   const checkPaymentStatus = async () => {
-    const apiKey = localStorage.getItem("sub2api_key");
-    if (!apiKey) {
-      setStatus("error");
-      return;
-    }
-
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/v1/payment/status/${sessionId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-        }
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/payment/status/${sessionId}`
       );
 
       if (res.ok) {
         const data = await res.json();
-        if (data.status === "complete" || data.status === "paid") {
+        const paid =
+          data.payment_status === "paid" ||
+          data.status === "complete" ||
+          data.status === "paid";
+        if (paid) {
           setStatus("success");
           setAmount(data.amount);
         } else {

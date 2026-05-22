@@ -126,6 +126,84 @@ func (s *SQLiteStore) migrate() error {
 		expires_at DATETIME NOT NULL,
 		created_at DATETIME NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS account_ledger (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		key_id TEXT,
+		type TEXT NOT NULL,
+		amount REAL NOT NULL,
+		balance_before REAL NOT NULL,
+		balance_after REAL NOT NULL,
+		model TEXT,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
+		request_id TEXT,
+		stripe_payment_id TEXT,
+		payment_id TEXT,
+		note TEXT,
+		actor TEXT NOT NULL DEFAULT 'system',
+		created_at DATETIME NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_ledger_user_id ON account_ledger(user_id);
+	CREATE INDEX IF NOT EXISTS idx_ledger_type ON account_ledger(type);
+	CREATE INDEX IF NOT EXISTS idx_ledger_created_at ON account_ledger(created_at);
+
+	CREATE TABLE IF NOT EXISTS payments (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		stripe_session_id TEXT UNIQUE,
+		stripe_payment_intent TEXT,
+		amount_usd REAL NOT NULL,
+		currency TEXT NOT NULL DEFAULT 'usd',
+		status TEXT NOT NULL DEFAULT 'pending',
+		failure_reason TEXT,
+		ledger_entry_id TEXT,
+		created_at DATETIME NOT NULL,
+		completed_at DATETIME
+	);
+	CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);
+
+	CREATE TABLE IF NOT EXISTS request_logs (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		key_id TEXT NOT NULL,
+		request_id TEXT,
+		model TEXT NOT NULL,
+		stream INTEGER NOT NULL DEFAULT 0,
+		outcome TEXT NOT NULL,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
+		charged_usd REAL,
+		ledger_entry_id TEXT,
+		latency_ms INTEGER,
+		client_ip TEXT,
+		created_at DATETIME NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_reqlog_user_id ON request_logs(user_id);
+	CREATE INDEX IF NOT EXISTS idx_reqlog_key_id ON request_logs(key_id);
+
+	CREATE TABLE IF NOT EXISTS admin_audit_log (
+		id TEXT PRIMARY KEY,
+		admin_id TEXT,
+		target_user_id TEXT NOT NULL,
+		action TEXT NOT NULL,
+		before_json TEXT NOT NULL,
+		after_json TEXT NOT NULL,
+		ledger_entry_id TEXT,
+		created_at DATETIME NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS sync_outbox (
+		id TEXT PRIMARY KEY,
+		entity_type TEXT NOT NULL,
+		entity_id TEXT NOT NULL,
+		payload_json TEXT NOT NULL,
+		retry_count INTEGER NOT NULL DEFAULT 0,
+		last_error TEXT,
+		created_at DATETIME NOT NULL,
+		processed_at DATETIME
+	);
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -141,8 +219,17 @@ func (s *SQLiteStore) migrate() error {
 		`ALTER TABLE users ADD COLUMN has_paid INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN first_paid_at DATETIME`,
 		`ALTER TABLE users ADD COLUMN last_monthly_grant_month TEXT`,
+		`ALTER TABLE users ADD COLUMN spendable_balance REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN recharged_balance REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE users ADD COLUMN invite_code_used TEXT`,
+		`ALTER TABLE users ADD COLUMN registered_at DATETIME`,
+		`ALTER TABLE users ADD COLUMN last_login_at DATETIME`,
+		`ALTER TABLE users ADD COLUMN terms_accepted_at DATETIME`,
+		`ALTER TABLE users ADD COLUMN terms_version TEXT`,
 		`ALTER TABLE api_keys ADD COLUMN spend_limit REAL`,
 		`ALTER TABLE api_keys ADD COLUMN spent_total REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE api_keys ADD COLUMN deleted_at DATETIME`,
 		`ALTER TABLE transactions ADD COLUMN user_id TEXT`,
 	}
 	for _, stmt := range alterStmts {
@@ -151,6 +238,18 @@ func (s *SQLiteStore) migrate() error {
 		}
 	}
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_verify_token_hash ON users(email_verify_token_hash)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)`)
+
+	// Backfill account_ledger from legacy transactions (idempotent)
+	_, _ = s.db.Exec(`
+		INSERT OR IGNORE INTO account_ledger (
+			id, user_id, key_id, type, amount, balance_before, balance_after,
+			model, input_tokens, output_tokens, request_id, stripe_payment_id, actor, created_at
+		)
+		SELECT id, COALESCE(user_id, ''), NULLIF(key_id, ''), type, amount, balance_before, balance_after,
+			model, input_tokens, output_tokens, request_id, stripe_payment_id, 'system', created_at
+		FROM transactions WHERE COALESCE(user_id, '') != ''
+	`)
 	return nil
 }
 
@@ -313,26 +412,7 @@ func (s *SQLiteStore) UpdateBalance(ctx context.Context, keyID string, balance f
 // ==================== Transaction Operations ====================
 
 func (s *SQLiteStore) SaveTransaction(ctx context.Context, tx *model.Transaction) error {
-	query := `
-		INSERT INTO transactions (id, key_id, type, amount, balance_before, balance_after, model, input_tokens, output_tokens, request_id, stripe_payment_id, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	_, err := s.db.ExecContext(ctx, query,
-		tx.ID,
-		tx.KeyID,
-		tx.Type,
-		tx.Amount,
-		tx.BalanceBefore,
-		tx.BalanceAfter,
-		tx.Model,
-		tx.InputTokens,
-		tx.OutputTokens,
-		tx.RequestID,
-		tx.StripePaymentID,
-		tx.CreatedAt,
-	)
-	return err
+	return s.SaveLedgerEntry(ctx, tx)
 }
 
 func (s *SQLiteStore) GetTransactionsByKeyID(ctx context.Context, keyID string, limit int) ([]*model.Transaction, error) {
@@ -400,8 +480,8 @@ func (s *SQLiteStore) GetUsageStatsByKeyID(ctx context.Context, keyID string) (t
 
 func (s *SQLiteStore) CreateUser(ctx context.Context, user *model.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, name, status, email_verified, email_verify_token_hash, email_verify_expires_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (id, email, password_hash, name, status, email_verified, email_verify_token_hash, email_verify_expires_at, terms_accepted_at, terms_version, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.ExecContext(ctx, query,
 		user.ID,
@@ -412,6 +492,8 @@ func (s *SQLiteStore) CreateUser(ctx context.Context, user *model.User) error {
 		user.EmailVerified,
 		user.EmailVerifyTokenHash,
 		user.EmailVerifyExpiresAt,
+		user.TermsAcceptedAt,
+		user.TermsVersion,
 		user.CreatedAt,
 		user.UpdatedAt,
 	)
@@ -500,11 +582,13 @@ func (s *SQLiteStore) UpdateUser(ctx context.Context, user *model.User) error {
 	return err
 }
 
-// SaveUserAccount persists account wallet fields to SQLite (Redis remains source of truth at runtime).
-func (s *SQLiteStore) SaveUserAccount(ctx context.Context, user *model.User) error {
+// SaveUserAccount persists account wallet snapshot to SQLite (aligned with Redis at write-through time).
+func (s *SQLiteStore) SaveUserAccount(ctx context.Context, user *model.User, spendable, recharged float64) error {
 	query := `
 		UPDATE users
-		SET balance = ?, has_paid = ?, first_paid_at = ?, last_monthly_grant_month = ?, updated_at = ?
+		SET balance = ?, spendable_balance = ?, recharged_balance = ?,
+		    has_paid = ?, first_paid_at = ?, last_monthly_grant_month = ?,
+		    row_version = row_version + 1, updated_at = ?
 		WHERE id = ?
 	`
 	hasPaid := 0
@@ -512,7 +596,9 @@ func (s *SQLiteStore) SaveUserAccount(ctx context.Context, user *model.User) err
 		hasPaid = 1
 	}
 	_, err := s.db.ExecContext(ctx, query,
-		user.Balance,
+		spendable,
+		spendable,
+		recharged,
 		hasPaid,
 		user.FirstPaidAt,
 		user.LastMonthlyGrantMonth,

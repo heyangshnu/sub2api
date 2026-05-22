@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -184,7 +185,8 @@ func (s *RedisStore) CreateKey(ctx context.Context, userID, name string, balance
 	if _, err := pipe.Exec(ctx); err != nil {
 		return "", nil, err
 	}
-	
+
+	s.writeThroughKey(ctx, key)
 	return rawKey, key, nil
 }
 
@@ -780,6 +782,7 @@ func (s *RedisStore) AppendRequestLog(ctx context.Context, entry *model.RequestL
 	}
 	_ = s.client.LTrim(ctx, rkey, 0, int64(maxRequestLogsPerKey-1)).Err()
 	_ = s.client.Expire(ctx, rkey, 720*time.Hour).Err()
+	s.writeThroughRequestLog(ctx, entry)
 	return nil
 }
 
@@ -848,7 +851,22 @@ func (s *RedisStore) CreateUser(ctx context.Context, user *model.User) error {
 	pipe.Set(ctx, accountBalanceKey(user.ID), "0", 0)
 
 	_, err = pipe.Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	s.syncUserToSQLite(ctx, user)
+	return nil
+}
+
+func (s *RedisStore) syncUserToSQLite(ctx context.Context, user *model.User) {
+	if s.sqlite == nil || user == nil {
+		return
+	}
+	if err := s.sqlite.CreateUser(ctx, user); err != nil {
+		if err := s.sqlite.UpdateUser(ctx, user); err != nil {
+			log.Printf("sqlite sync user %s: %v", user.ID, err)
+		}
+	}
 }
 
 func (s *RedisStore) mergeUserPasswordHash(ctx context.Context, userID string, user *model.User) error {
@@ -932,7 +950,11 @@ func (s *RedisStore) UpdateUser(ctx context.Context, user *model.User) error {
 		pipe.Set(ctx, KeyPrefixUserAuth+user.ID, authJSON, 0)
 	}
 	_, err = pipe.Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	s.syncUserToSQLite(ctx, user)
+	return nil
 }
 
 type registerOTPData struct {

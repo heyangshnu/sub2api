@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"sub2api-go/internal/config"
 	"sub2api-go/internal/middleware"
 	"sub2api-go/internal/model"
 	"sub2api-go/internal/store"
@@ -109,10 +110,11 @@ func (h *AdminHandler) TopupKey(c *gin.Context) {
 
 type UserHandler struct {
 	store store.Store
+	cfg   *config.Config
 }
 
-func NewUserHandler(s store.Store) *UserHandler {
-	return &UserHandler{store: s}
+func NewUserHandler(s store.Store, cfg *config.Config) *UserHandler {
+	return &UserHandler{store: s, cfg: cfg}
 }
 
 // GetUsage handles GET /v1/usage
@@ -163,18 +165,9 @@ func (h *UserHandler) GetTransactions(c *gin.Context) {
 
 // GetModels handles GET /v1/models
 func (h *UserHandler) GetModels(c *gin.Context) {
-	models := []gin.H{
-		{"id": "claude-3-5-sonnet-20241022", "object": "model", "owned_by": "anthropic"},
-		{"id": "claude-3-5-haiku-20241022", "object": "model", "owned_by": "anthropic"},
-		{"id": "claude-3-opus-20240229", "object": "model", "owned_by": "anthropic"},
-		{"id": "gpt-4o", "object": "model", "owned_by": "openai"},
-		{"id": "gpt-4o-mini", "object": "model", "owned_by": "openai"},
-		{"id": "deepseek-chat", "object": "model", "owned_by": "deepseek"},
-	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   models,
+		"data":   ModelsFromConfig(h.cfg),
 	})
 }
 

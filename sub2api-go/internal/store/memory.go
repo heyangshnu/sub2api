@@ -29,6 +29,7 @@ type MemoryStore struct {
 	resetPasswordOTP   map[string]*memRegisterOTP // normalized email -> pending reset code
 	requestLogs        map[string][]*model.RequestLogEntry // keyID -> newest first
 	transactions       []model.Transaction
+	subscriptions      map[string]*model.UserSubscription // userID -> active period
 	keyCounter   int
 }
 
@@ -47,6 +48,7 @@ func NewMemoryStore() *MemoryStore {
 		resetPasswordOTP:  make(map[string]*memRegisterOTP),
 		requestLogs:       make(map[string][]*model.RequestLogEntry),
 		transactions: make([]model.Transaction, 0),
+		subscriptions: make(map[string]*model.UserSubscription),
 	}
 }
 

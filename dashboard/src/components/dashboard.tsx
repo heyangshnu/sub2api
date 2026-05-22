@@ -202,11 +202,6 @@ export function Dashboard() {
             {user && (
               <span className="hidden text-sm text-slate-800 sm:inline">{user.email}</span>
             )}
-            {authMode === "api_key" && apiKey && (
-              <span className="rounded-lg border border-slate-200 bg-white/80 px-2 py-1 font-mono text-xs text-slate-700">
-                {apiKey.slice(0, 15)}…
-              </span>
-            )}
             <TopupDialog />
             {authMode === "jwt" && chartKeyId && (
               <Link

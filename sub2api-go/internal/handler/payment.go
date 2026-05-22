@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v76"
+	"sub2api-go/internal/config"
 	"sub2api-go/internal/middleware"
 	"sub2api-go/internal/model"
 	"sub2api-go/internal/service"
@@ -19,12 +20,14 @@ import (
 type PaymentHandler struct {
 	stripeService *service.StripeService
 	store         store.Store
+	cfg           *config.Config
 }
 
-func NewPaymentHandler(ss *service.StripeService, s store.Store) *PaymentHandler {
+func NewPaymentHandler(ss *service.StripeService, s store.Store, cfg *config.Config) *PaymentHandler {
 	return &PaymentHandler{
 		stripeService: ss,
 		store:         s,
+		cfg:           cfg,
 	}
 }
 
@@ -110,6 +113,35 @@ func (h *PaymentHandler) HandleWebhook(c *gin.Context) {
 		if amountStr == "" {
 			log.Printf("Missing amount metadata in session %s", session.ID)
 			c.JSON(http.StatusOK, gin.H{"received": true})
+			return
+		}
+
+		// Subscription checkout (JWT)
+		if session.Metadata["type"] == "subscription" {
+			userID := session.Metadata["user_id"]
+			planID := session.Metadata["plan_id"]
+			if userID == "" || planID == "" {
+				log.Printf("Missing subscription metadata in session %s", session.ID)
+				c.JSON(http.StatusOK, gin.H{"received": true})
+				return
+			}
+			periodDays := 30
+			if h.cfg != nil && h.cfg.SubscriptionPeriodDays > 0 {
+				periodDays = h.cfg.SubscriptionPeriodDays
+			}
+			if err := h.store.ActivateUserSubscription(c.Request.Context(), userID, planID, periodDays, true); err != nil {
+				log.Printf("Activate subscription failed session %s: %v", session.ID, err)
+				c.JSON(http.StatusOK, gin.H{"received": true, "error": "subscription_activate_failed"})
+				return
+			}
+			if h.cfg != nil {
+				if plan := h.cfg.PlanByID(planID); plan != nil && plan.IncludedBalanceUSD > 0 {
+					_ = h.store.AccountTopup(c.Request.Context(), userID, plan.IncludedBalanceUSD,
+						"subscription_grant", "Included balance: "+planID, session.ID, true)
+				}
+			}
+			log.Printf("Subscription activated plan=%s user=%s session=%s", planID, userID, session.ID)
+			c.JSON(http.StatusOK, gin.H{"received": true, "subscription": planID})
 			return
 		}
 

@@ -17,8 +17,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"sub2api-go/internal/config"
+	"sub2api-go/internal/legal"
 	"sub2api-go/internal/middleware"
 	"sub2api-go/internal/model"
+	"sub2api-go/internal/service"
 	"sub2api-go/internal/store"
 )
 
@@ -65,12 +67,22 @@ func (h *AuthHandler) AuthConfig(c *gin.Context) {
 	if h.cfg != nil && len(h.cfg.ChatEnabledModels) > 0 {
 		models = h.cfg.ChatEnabledModels
 	}
-	c.JSON(http.StatusOK, gin.H{
+	out := gin.H{
 		"email_verify_enabled": h.emailVerifyEnabled,
 		"invite_required":      inviteRequired,
+		"terms_version":        legal.CurrentTermsVersion(),
+		"terms_required":       true,
 		"chat_enabled_models":  models,
 		"currency":             "USD",
-	})
+	}
+	if h.cfg != nil {
+		out["subscriptions_enabled"] = h.cfg.SubscriptionsEnabled
+		out["subscription_period_days"] = h.cfg.SubscriptionPeriodDays
+		if h.cfg.SubscriptionsEnabled {
+			out["subscription_plans"] = h.cfg.SubscriptionPlans
+		}
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // Register handles POST /auth/register
@@ -81,8 +93,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	if msg := validateInviteCode(h.inviteCode, req.InviteCode); msg != "" {
-		c.JSON(http.StatusForbidden, model.NewAPIError("forbidden", msg))
+	if msg := validateTermsAcceptance(req.TermsAccepted, req.TermsVersion); msg != "" {
+		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", msg))
 		return
 	}
 
@@ -115,6 +127,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	now := time.Now()
+	termsAt := now
 	userID := generateUserID(req.Email)
 	user := &model.User{
 		ID:                   userID,
@@ -125,6 +138,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		EmailVerified:        true,
 		EmailVerifyTokenHash: "",
 		EmailVerifyExpiresAt: nil,
+		TermsAcceptedAt:      &termsAt,
+		TermsVersion:         strings.TrimSpace(req.TermsVersion),
 		CreatedAt:            now,
 		UpdatedAt:            now,
 	}
@@ -165,11 +180,6 @@ func (h *AuthHandler) SendRegisterCode(c *gin.Context) {
 	var req model.SendRegisterCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid request: "+err.Error()))
-		return
-	}
-
-	if msg := validateInviteCode(h.inviteCode, req.InviteCode); msg != "" {
-		c.JSON(http.StatusForbidden, model.NewAPIError("forbidden", msg))
 		return
 	}
 
@@ -402,6 +412,9 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 	if h.cfg != nil && !h.cfg.RequirePaymentBeforeCreateKey {
 		canCreate = true
 	}
+	subSvc := service.NewSubscriptionService(h.store, h.cfg)
+	_ = subSvc.EnsureUser(c.Request.Context(), user.ID)
+
 	c.JSON(http.StatusOK, model.UserProfile{
 		ID:               user.ID,
 		Email:            user.Email,
@@ -412,6 +425,7 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 		HasPaid:          user.HasPaid,
 		CanCreateKey:     canCreate,
 		Currency:         "USD",
+		Subscription:     subSvc.BuildView(c.Request.Context(), user.ID),
 	})
 }
 
@@ -657,6 +671,18 @@ func smtpClientSend(client *smtp.Client, auth smtp.Auth, from string, to []strin
 func generateUserID(email string) string {
 	h := sha256.Sum256([]byte(email + time.Now().String()))
 	return "user_" + hex.EncodeToString(h[:8])
+}
+
+func validateTermsAcceptance(accepted bool, version string) string {
+	if !accepted {
+		return "You must accept the User Agreement and Privacy Notice to register"
+	}
+	want := legal.CurrentTermsVersion()
+	got := strings.TrimSpace(version)
+	if got == "" || got != want {
+		return "Terms version is outdated. Please refresh the page and accept the current agreement (version " + want + ")"
+	}
+	return ""
 }
 
 // validateInviteCode returns a user-facing message when invite is required but missing or wrong.

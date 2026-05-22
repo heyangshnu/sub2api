@@ -54,6 +54,25 @@ export interface User {
   created_at: string;
 }
 
+export interface UserSubscriptionView {
+  plan_id: string;
+  monthly_price_usd: number;
+  monthly_spend_cap_usd: number;
+  spent_this_period: number;
+  remaining_cap_usd: number;
+  allowed_models: string[];
+  period_end: string;
+  active: boolean;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  monthly_price_usd: number;
+  monthly_spend_cap_usd: number;
+  included_balance_usd: number;
+  allowed_models: string[];
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -64,6 +83,7 @@ export interface UserProfile {
   has_paid: boolean;
   can_create_key: boolean;
   currency: string;
+  subscription?: UserSubscriptionView | null;
 }
 
 export interface AuthResponse {
@@ -259,8 +279,13 @@ class APIClient {
   async getAuthConfig(): Promise<{
     email_verify_enabled: boolean;
     invite_required?: boolean;
+    terms_version?: string;
+    terms_required?: boolean;
     chat_enabled_models?: string[];
     currency?: string;
+    subscriptions_enabled?: boolean;
+    subscription_period_days?: number;
+    subscription_plans?: SubscriptionPlan[];
   }> {
     const response = await fetch(`${API_BASE}/auth/config`, {
       method: "GET",
@@ -276,18 +301,22 @@ class APIClient {
   async register(
     email: string,
     password: string,
-    name?: string,
-    inviteCode?: string,
-    verificationCode?: string
+    options?: {
+      name?: string;
+      verificationCode?: string;
+      termsAccepted: boolean;
+      termsVersion: string;
+    }
   ): Promise<AuthResponse> {
     return this.authRequest<AuthResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify({
         email,
         password,
-        name,
-        invite_code: inviteCode?.trim() || undefined,
-        verification_code: verificationCode || undefined,
+        name: options?.name,
+        verification_code: options?.verificationCode || undefined,
+        terms_accepted: options?.termsAccepted ?? false,
+        terms_version: options?.termsVersion ?? "",
       }),
     });
   }
@@ -299,13 +328,10 @@ class APIClient {
     });
   }
 
-  async sendRegisterCode(email: string, inviteCode?: string): Promise<{ message: string }> {
+  async sendRegisterCode(email: string): Promise<{ message: string }> {
     return this.authRequest<{ message: string }>("/auth/send-register-code", {
       method: "POST",
-      body: JSON.stringify({
-        email,
-        invite_code: inviteCode?.trim() || undefined,
-      }),
+      body: JSON.stringify({ email }),
     });
   }
 
@@ -457,14 +483,49 @@ class APIClient {
     return this.request<ModelsResponse>("/v1/models");
   }
 
-  // Validate API key by trying to get usage
-  async validateKey(): Promise<boolean> {
+  /** JWT-only model list (no API key). */
+  async listDashboardModels(): Promise<ModelsResponse> {
+    return this.authRequest<ModelsResponse>("/dashboard/models");
+  }
+
+  /** Probe API key via GET /v1/models; returns model count on success. */
+  async testApiKeyConnection(): Promise<{ ok: true; modelCount: number } | { ok: false; message: string }> {
     try {
-      await this.getUsage();
-      return true;
-    } catch {
-      return false;
+      const res = await this.getModels();
+      const count = res.data?.length ?? 0;
+      return { ok: true, modelCount: count };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "连接失败";
+      return { ok: false, message };
     }
+  }
+
+  // Validate API key by trying to get models
+  async validateKey(): Promise<boolean> {
+    const r = await this.testApiKeyConnection();
+    return r.ok;
+  }
+
+  async getSubscription(): Promise<{ subscription: UserSubscriptionView | null }> {
+    return this.authRequest("/dashboard/subscription");
+  }
+
+  async listSubscriptionPlans(): Promise<{
+    enabled: boolean;
+    period_days: number;
+    plans: SubscriptionPlan[];
+    currency: string;
+  }> {
+    return this.authRequest("/dashboard/subscription/plans");
+  }
+
+  async createSubscriptionCheckout(
+    planId: string
+  ): Promise<{ checkout_url?: string; session_id?: string; plan_id?: string; activated?: boolean; message?: string }> {
+    return this.authRequest("/dashboard/subscription/checkout", {
+      method: "POST",
+      body: JSON.stringify({ plan_id: planId }),
+    });
   }
 }
 

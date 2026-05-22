@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	"sub2api-go/internal/model"
@@ -70,8 +71,15 @@ func (s *Syncer) SyncAll(ctx context.Context) error {
 		log.Printf("[Syncer] Transactions sync error: %v", err)
 	}
 
-	log.Printf("[Syncer] Sync completed: %d keys, %d transactions in %v", 
-		keysCount, txCount, time.Since(start))
+	userCount, err := s.syncUsers(ctx)
+	if err != nil {
+		log.Printf("[Syncer] Users sync error: %v", err)
+	}
+
+	outboxCount, _ := s.ProcessOutbox(ctx)
+
+	log.Printf("[Syncer] Sync completed: %d keys, %d ledger, %d users, %d outbox in %v",
+		keysCount, txCount, userCount, outboxCount, time.Since(start))
 
 	return nil
 }
@@ -137,6 +145,35 @@ func (s *Syncer) syncTransactions(ctx context.Context) (int, error) {
 		}
 	}
 
+	return count, nil
+}
+
+func (s *Syncer) syncUsers(ctx context.Context) (int, error) {
+	if s.sqlite == nil {
+		return 0, nil
+	}
+	var cursor uint64
+	count := 0
+	for {
+		keys, next, err := s.redis.client.Scan(ctx, cursor, KeyPrefixUser+"*", 100).Result()
+		if err != nil {
+			return count, err
+		}
+		for _, k := range keys {
+			userID := strings.TrimPrefix(k, KeyPrefixUser)
+			user, err := s.redis.GetUserByID(ctx, userID)
+			if err != nil {
+				continue
+			}
+			_ = s.sqlite.CreateUser(ctx, user)
+			s.redis.writeThroughUserAccount(ctx, user)
+			count++
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
 	return count, nil
 }
 

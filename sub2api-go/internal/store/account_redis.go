@@ -180,11 +180,14 @@ func (s *RedisStore) AccountTopup(ctx context.Context, userID string, amount flo
 	if err := s.UpdateUser(ctx, user); err != nil {
 		return err
 	}
-	if s.sqlite != nil {
-		_ = s.sqlite.SaveUserAccount(ctx, user)
-	}
-
 	now := time.Now()
+	actor := "system"
+	if txType == "admin_topup" || txType == "admin_adjust" {
+		actor = "admin"
+	}
+	if stripePaymentID != "" {
+		actor = "stripe_webhook"
+	}
 	tx := model.Transaction{
 		ID:              generateTxID(),
 		UserID:          userID,
@@ -193,11 +196,14 @@ func (s *RedisStore) AccountTopup(ctx context.Context, userID string, amount flo
 		BalanceBefore:   oldBalance,
 		BalanceAfter:    newBalance,
 		StripePaymentID: stripePaymentID,
+		Note:            note,
+		Actor:           actor,
 		CreatedAt:       now,
 	}
 	txJSON, _ := json.Marshal(tx)
 	s.client.Set(ctx, KeyPrefixTransaction+tx.ID, txJSON, TransactionRedisTTL)
-	_ = note
+	s.writeThroughLedger(ctx, &tx)
+	s.writeThroughUserAccount(ctx, user)
 	return nil
 }
 
@@ -254,9 +260,7 @@ func (s *RedisStore) AccountFinalizeDeduct(ctx context.Context, userID, keyID, t
 		user.Balance = newBalance
 		user.UpdatedAt = time.Now()
 		_ = s.UpdateUser(ctx, user)
-		if s.sqlite != nil {
-			_ = s.sqlite.SaveUserAccount(ctx, user)
-		}
+		s.writeThroughUserAccount(ctx, user)
 	}
 
 	now := time.Now()
@@ -272,10 +276,12 @@ func (s *RedisStore) AccountFinalizeDeduct(ctx context.Context, userID, keyID, t
 		InputTokens:   usage.PromptTokens,
 		OutputTokens:  usage.CompletionTokens,
 		RequestID:     requestID,
+		Actor:         "system",
 		CreatedAt:     now,
 	}
 	txJSON, _ := json.Marshal(tx)
 	s.client.Set(ctx, KeyPrefixTransaction+tx.ID, txJSON, TransactionRedisTTL)
+	s.writeThroughLedger(ctx, &tx)
 
 	if extra := actualAmount - preDeducted; extra > 0 {
 		balBefore, _ := s.GetAccountBalance(ctx, userID)
@@ -303,9 +309,7 @@ func (s *RedisStore) TryMonthlyGrant(ctx context.Context, userID string, grantUS
 		user.LastMonthlyGrantMonth = month
 		user.UpdatedAt = time.Now()
 		_ = s.UpdateUser(ctx, user)
-		if s.sqlite != nil {
-			_ = s.sqlite.SaveUserAccount(ctx, user)
-		}
+		s.writeThroughUserAccount(ctx, user)
 	}
 	return true, nil
 }

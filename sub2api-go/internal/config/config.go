@@ -56,6 +56,11 @@ type Config struct {
 	RequirePaymentBeforeCreateKey    bool
 	ChatEnabledModels              []string
 	RegisterOTPCooldownSec           int
+
+	// Subscriptions (optional; configured via SUBSCRIPTION_PLANS)
+	SubscriptionsEnabled   bool
+	SubscriptionPeriodDays int
+	SubscriptionPlans      []SubscriptionPlan
 }
 
 type ProviderConfig struct {
@@ -76,6 +81,11 @@ func Load() *Config {
 	allowMem := getEnv("ALLOW_MEMORY_STORE", "true") != "false"
 	rlFailOpen := getEnv("RATE_LIMIT_REDIS_FAIL_OPEN", "true") != "false"
 	allowUnknownModel := getEnv("ALLOW_UNKNOWN_MODEL_PRICING", "true") != "false"
+
+	subEnabled, subPeriod, subPlans, subErr := loadSubscriptionConfig()
+	if subErr != nil {
+		panic(fmt.Sprintf("invalid SUBSCRIPTION_PLANS: %v", subErr))
+	}
 
 	cfg = &Config{
 		Port:                getEnv("PORT", "3000"),
@@ -105,6 +115,9 @@ func Load() *Config {
 		RequirePaymentBeforeCreateKey: getEnv("REQUIRE_PAYMENT_BEFORE_CREATE_KEY", "true") != "false",
 		ChatEnabledModels:         getEnvSliceTrimmed("CHAT_ENABLED_MODELS"),
 		RegisterOTPCooldownSec:    getEnvInt("REGISTER_OTP_COOLDOWN_SEC", 60),
+		SubscriptionsEnabled:      subEnabled,
+		SubscriptionPeriodDays:    subPeriod,
+		SubscriptionPlans:         subPlans,
 	}
 	if len(cfg.ChatEnabledModels) == 0 {
 		cfg.ChatEnabledModels = []string{"deepseek-chat"}

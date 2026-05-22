@@ -172,3 +172,12 @@ func (h *DashboardHandler) DeleteKey(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Key deleted successfully"})
 }
+
+// ListModels returns configured models for the logged-in user (no API key required).
+// GET /dashboard/models
+func (h *DashboardHandler) ListModels(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   ModelsFromConfig(h.cfg),
+	})
+}

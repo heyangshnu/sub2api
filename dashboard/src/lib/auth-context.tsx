@@ -1,55 +1,69 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import { apiClient, User, UserProfile, APIKey } from "@/lib/api";
 
-type AuthMode = "none" | "api_key" | "jwt";
+export type AuthDialogTab = "login" | "register";
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  isGuest: boolean;
   isLoading: boolean;
-  authMode: AuthMode;
+  authMode: "none" | "jwt";
   user: User | null;
   userProfile: UserProfile | null;
   apiKey: string | null;
   apiKeys: APIKey[];
+  authDialogOpen: boolean;
+  authDialogTab: AuthDialogTab;
   refreshProfile: () => Promise<void>;
-  
-  // API Key login (legacy)
-  loginWithApiKey: (apiKey: string) => Promise<boolean>;
-  
-  // JWT login/register
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (
     email: string,
     password: string,
-    name?: string,
-    inviteCode?: string,
-    verificationCode?: string
+    options: {
+      name?: string;
+      verificationCode?: string;
+      termsAccepted: boolean;
+      termsVersion: string;
+    }
   ) => Promise<{ success: boolean; error?: string }>;
-  
   logout: () => void;
   refreshKeys: () => Promise<void>;
-  /** After creating an API key, attach it for /v1/* usage & balance queries */
   bindUsageApiKey: (rawKey: string) => void;
+  openAuthDialog: (tab?: AuthDialogTab) => void;
+  closeAuthDialog: () => void;
+  requireAuth: (action: () => void | Promise<void>, tab?: AuthDialogTab) => void;
+  onAuthSuccess: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_KEY_STORAGE_KEY = "sub2api_key";
 const JWT_TOKEN_STORAGE_KEY = "sub2api_token";
 const USER_STORAGE_KEY = "sub2api_user";
+const API_KEY_STORAGE_KEY = "sub2api_key";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<AuthMode>("none");
+  const [authMode, setAuthMode] = useState<"none" | "jwt">("none");
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authDialogTab, setAuthDialogTab] = useState<AuthDialogTab>("login");
+  const pendingActionRef = useRef<(() => void | Promise<void>) | null>(null);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (!apiClient.getToken()) return;
     try {
       const profile = await apiClient.getMe();
@@ -64,19 +78,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-  };
+  }, []);
 
-  // Check for saved auth on mount
+  const refreshKeys = useCallback(async () => {
+    if (!apiClient.getToken()) return;
+    try {
+      const { keys } = await apiClient.getMyKeys();
+      setApiKeys(keys);
+      const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+      if (savedApiKey) {
+        apiClient.setApiKey(savedApiKey);
+        setApiKey(savedApiKey);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     const init = async () => {
-      // Check for JWT token first
       const savedToken = localStorage.getItem(JWT_TOKEN_STORAGE_KEY);
       const savedUser = localStorage.getItem(USER_STORAGE_KEY);
-      
+
       if (savedToken && savedUser) {
         apiClient.setToken(savedToken);
         try {
-          // Verify token is still valid
           const currentUser = await apiClient.getMe();
           setUserProfile(currentUser);
           setUser({
@@ -88,115 +114,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           setIsAuthenticated(true);
           setAuthMode("jwt");
-          
-          // Load user's API keys
           const { keys } = await apiClient.getMyKeys();
           setApiKeys(keys);
-          
-          // If user has keys, set the first one for usage queries
-          if (keys.length > 0) {
-            // We don't have the raw key, but we can use JWT for dashboard
+          const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+          if (savedApiKey) {
+            apiClient.setApiKey(savedApiKey);
+            setApiKey(savedApiKey);
           }
         } catch {
-          // Token invalid, clear storage
           localStorage.removeItem(JWT_TOKEN_STORAGE_KEY);
           localStorage.removeItem(USER_STORAGE_KEY);
           apiClient.clearToken();
         }
-        setIsLoading(false);
-        return;
       }
 
-      // Fall back to API key auth
-      const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-      if (savedApiKey) {
-        apiClient.setApiKey(savedApiKey);
-        const valid = await apiClient.validateKey();
-        if (valid) {
-          setApiKey(savedApiKey);
-          setIsAuthenticated(true);
-          setAuthMode("api_key");
-        } else {
-          localStorage.removeItem(API_KEY_STORAGE_KEY);
-          apiClient.clearApiKey();
-        }
-      }
-      
       setIsLoading(false);
     };
-    
-    init();
+
+    void init();
   }, []);
 
-  // Login with API Key (legacy method)
-  const loginWithApiKey = async (key: string): Promise<boolean> => {
-    apiClient.setApiKey(key);
-    const valid = await apiClient.validateKey();
-    if (valid) {
-      localStorage.setItem(API_KEY_STORAGE_KEY, key);
-      setApiKey(key);
-      setIsAuthenticated(true);
-      setAuthMode("api_key");
-    } else {
-      apiClient.clearApiKey();
-    }
-    return valid;
-  };
-
-  // Login with email/password
-  const loginWithEmail = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const loginWithEmail = async (
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await apiClient.login(email, password);
-
       if (!response.token || !response.user) {
         return { success: false, error: "Login did not return a valid session" };
       }
-
-      // Save token and user
       localStorage.setItem(JWT_TOKEN_STORAGE_KEY, response.token);
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(response.user));
-
       apiClient.setToken(response.token);
       setUser(response.user);
       setIsAuthenticated(true);
       setAuthMode("jwt");
       await refreshProfile();
-      
-      // Load user's API keys
-      try {
-        const { keys } = await apiClient.getMyKeys();
-        setApiKeys(keys);
-      } catch {
-        // Ignore error, user might not have keys yet
-      }
-      
+      await refreshKeys();
       return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Login failed" };
     }
   };
 
-  // Register: creates account on server but does not open a session — user must log in with email/password.
   const register = async (
     email: string,
     password: string,
-    name?: string,
-    inviteCode?: string,
-    verificationCode?: string
-  ): Promise<{ success: boolean; error?: string; apiKey?: string }> => {
+    options: {
+      name?: string;
+      verificationCode?: string;
+      termsAccepted: boolean;
+      termsVersion: string;
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await apiClient.register(
-        email,
-        password,
-        name,
-        inviteCode,
-        verificationCode
-      );
-
+      const response = await apiClient.register(email, password, options);
       if (!response.user) {
         return { success: false, error: "Registration did not return user info" };
       }
-
       return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Registration failed" };
@@ -216,40 +191,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthMode("none");
   };
 
-  const refreshKeys = async () => {
-    if (authMode === "jwt") {
-      try {
-        const { keys } = await apiClient.getMyKeys();
-        setApiKeys(keys);
-      } catch {
-        // Ignore
-      }
-    }
-  };
-
   const bindUsageApiKey = (rawKey: string) => {
     localStorage.setItem(API_KEY_STORAGE_KEY, rawKey);
     apiClient.setApiKey(rawKey);
     setApiKey(rawKey);
   };
 
+  const openAuthDialog = (tab: AuthDialogTab = "login") => {
+    setAuthDialogTab(tab);
+    setAuthDialogOpen(true);
+  };
+
+  const closeAuthDialog = () => {
+    pendingActionRef.current = null;
+    setAuthDialogOpen(false);
+  };
+
+  const onAuthSuccess = () => {
+    setAuthDialogOpen(false);
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    if (pending) void Promise.resolve(pending());
+  };
+
+  const requireAuth = (action: () => void | Promise<void>, tab: AuthDialogTab = "login") => {
+    if (isAuthenticated) {
+      void Promise.resolve(action());
+      return;
+    }
+    pendingActionRef.current = action;
+    openAuthDialog(tab);
+  };
+
   return (
-    <AuthContext.Provider value={{
-      isAuthenticated,
-      isLoading,
-      authMode,
-      user,
-      userProfile,
-      apiKey,
-      apiKeys,
-      refreshProfile,
-      loginWithApiKey,
-      loginWithEmail,
-      register,
-      logout,
-      refreshKeys,
-      bindUsageApiKey,
-    }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        isGuest: !isAuthenticated,
+        isLoading,
+        authMode,
+        user,
+        userProfile,
+        apiKey,
+        apiKeys,
+        authDialogOpen,
+        authDialogTab,
+        refreshProfile,
+        loginWithEmail,
+        register,
+        logout,
+        refreshKeys,
+        bindUsageApiKey,
+        openAuthDialog,
+        closeAuthDialog,
+        requireAuth,
+        onAuthSuccess,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
