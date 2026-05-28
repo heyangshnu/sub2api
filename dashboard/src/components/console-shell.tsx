@@ -134,7 +134,7 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
           mainClassName={
             isChatRoute && !isGuest
               ? "overflow-hidden p-0 md:p-0 lg:p-0"
-              : undefined
+              : "min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
           }
           headerLeft={
             <button
