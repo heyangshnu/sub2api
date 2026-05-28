@@ -6,6 +6,7 @@ import { useT } from "@/lib/i18n";
 import { ApiKeysCard } from "@/components/api-keys-card";
 import { Button } from "@/components/ui/button";
 import { PanelCard } from "@/components/ui/panel-card";
+import { consolePageClass } from "@/lib/console-layout";
 import { cn } from "@/lib/utils";
 
 export function KeysPage() {
@@ -14,7 +15,7 @@ export function KeysPage() {
 
   if (isGuest) {
     return (
-      <div className="mx-auto max-w-5xl space-y-5">
+      <div className={cn(consolePageClass, "space-y-5")}>
         <p className={ct.pageDesc}>{t("keys.guestDesc")}</p>
         <PanelCard
           title={t("keys.baseUrl")}
@@ -30,7 +31,7 @@ export function KeysPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className={consolePageClass}>
       <ApiKeysCard />
     </div>
   );

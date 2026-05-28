@@ -9,6 +9,7 @@ import { PanelCard } from "@/components/ui/panel-card";
 import { Badge } from "@/components/ui/badge";
 import { RippleCard } from "@/components/ui/ripple-card";
 import { ct } from "@/lib/console-typography";
+import { consolePageClass } from "@/lib/console-layout";
 import { cn, formatUsd } from "@/lib/utils";
 
 export function SubscriptionPage() {
@@ -60,14 +61,14 @@ export function SubscriptionPage() {
 
   if (!enabled && plans.length === 0) {
     return (
-      <div className="space-y-4">
+      <div className={cn(consolePageClass, "space-y-4")}>
         <p className={ct.pageDesc}>{t("subscription.disabled")}</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className={cn(consolePageClass, "space-y-6")}>
       <p className={ct.pageDesc}>{t("subscription.desc")}</p>
 
       {isAuthenticated && sub?.active && (

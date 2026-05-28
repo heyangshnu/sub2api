@@ -17,6 +17,7 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ct } from "@/lib/console-typography";
 import { ConsoleTable, ConsoleTableHead, ConsoleTd, ConsoleTh } from "@/components/ui/console-table";
+import { consolePageClass } from "@/lib/console-layout";
 import { cn, formatUsd } from "@/lib/utils";
 
 const DAY_OPTIONS = [7, 14, 30] as const;
@@ -236,7 +237,7 @@ export function UsagePage() {
 
   if (isGuest) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className={cn(consolePageClass, "space-y-6")}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatTile label={t("usage.balanceUsd")} value={dash} rippleDelay={rippleBase} />
           <StatTile label={t("usage.todaySpend")} value={dash} rippleDelay={rippleBase} />
@@ -270,7 +271,7 @@ export function UsagePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={cn(consolePageClass, "space-y-6")}>
       {pageActions ? <div className="flex justify-end">{pageActions}</div> : null}
 
       {!apiKey && (

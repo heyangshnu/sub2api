@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { consolePageClass } from "@/lib/console-layout";
 import { cn, formatUsd } from "@/lib/utils";
 
 export function TopupPage() {
@@ -75,7 +76,7 @@ export function TopupPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className={cn(consolePageClass, "space-y-5")}>
       <p className={ct.pageDesc}>{t("topup.desc")}</p>
 
       {isAuthenticated && userProfile && (

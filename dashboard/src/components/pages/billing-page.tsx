@@ -15,6 +15,7 @@ import {
   ConsoleTh,
 } from "@/components/ui/console-table";
 import { isConsumeType, isTopupType, transactionTypeLabel } from "@/lib/transaction-labels";
+import { consolePageClass } from "@/lib/console-layout";
 import { cn, formatUsd } from "@/lib/utils";
 
 type Tab = "topup" | "consume";
@@ -44,7 +45,7 @@ export function BillingPage() {
   }, [isAuthenticated, load]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className={cn(consolePageClass, "space-y-5")}>
       <p className={ct.pageDesc}>{t("billing.desc")}</p>
 
       <div className="flex gap-2">

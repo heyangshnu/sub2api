@@ -5,7 +5,9 @@ import { useT } from "@/lib/i18n";
 import { ChatPage } from "@/components/chat/chat-page";
 import { Button } from "@/components/ui/button";
 import { PanelCard } from "@/components/ui/panel-card";
+import { consolePageClass } from "@/lib/console-layout";
 import { ct } from "@/lib/console-typography";
+import { cn } from "@/lib/utils";
 
 export function ChatConsolePage() {
   const t = useT();
@@ -13,7 +15,7 @@ export function ChatConsolePage() {
 
   if (isGuest) {
     return (
-      <div className="space-y-6">
+      <div className={cn(consolePageClass, "space-y-6")}>
         <PanelCard title={t("chat.signInRequired")}>
           <div className="space-y-4">
             <p className={ct.pageDesc}>{t("chat.guestDesc")}</p>

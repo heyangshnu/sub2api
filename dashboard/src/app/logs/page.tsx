@@ -13,6 +13,7 @@ import { ct } from "@/lib/console-typography";
 import { ConsoleTable, ConsoleTableHead, ConsoleTd, ConsoleTh } from "@/components/ui/console-table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { consolePageClass } from "@/lib/console-layout";
 import { cn } from "@/lib/utils";
 
 function LogsInner() {
@@ -67,7 +68,7 @@ function LogsInner() {
   if (isLoading) {
     return (
       <ConsoleShell>
-        <div className="mx-auto max-w-6xl space-y-6">
+        <div className={cn(consolePageClass, "space-y-6")}>
           <Skeleton className="h-10 w-48 rounded-xl bg-slate-200/80" />
           <Skeleton className="h-64 rounded-2xl bg-slate-200/70" />
         </div>
@@ -103,7 +104,7 @@ function LogsInner() {
 
   return (
     <ConsoleShell>
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className={cn(consolePageClass, "space-y-6")}>
         <PanelCard
           title={t("logs.filter")}
           description={t("logs.filterDesc")}

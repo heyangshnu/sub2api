@@ -182,6 +182,12 @@
   --console-sidebar-w: 15.5rem;
 }
 
+/* Main content uses full width beside sidebar (avoid narrow max-w-5xl column on wide screens) */
+.console-page {
+  width: 100%;
+  min-width: 0;
+}
+
 /* —— Card bounce: whole tile pops once on mount (Smartisan / Hammer unlock style) —— */
 @keyframes card-bounce-in {
   0% {
