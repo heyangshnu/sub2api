@@ -76,6 +76,38 @@ func (h *DashboardAccountHandler) ListAccountTransactions(c *gin.Context) {
 	})
 }
 
+// ListPayments GET /dashboard/payments
+func (h *DashboardAccountHandler) ListPayments(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	uid := userID.(string)
+	limit := 20
+	offset := 0
+	if v := c.Query("limit"); v != "" {
+		if n, err := parseIntDefault(v, 20); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := c.Query("offset"); v != "" {
+		if n, err := parseIntDefault(v, 0); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	records, total, err := h.store.ListPaymentRecords(c.Request.Context(), uid, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to list payments"))
+		return
+	}
+	if records == nil {
+		records = []*model.PaymentRecord{}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"payments": records,
+		"total":    total,
+		"limit":    limit,
+		"offset":   offset,
+	})
+}
+
 func parseIntDefault(s string, def int) (int, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil {

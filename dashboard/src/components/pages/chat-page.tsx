@@ -1,37 +1,33 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
+import { useT } from "@/lib/i18n";
 import { ChatPage } from "@/components/chat/chat-page";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PanelCard } from "@/components/ui/panel-card";
+import { ct } from "@/lib/console-typography";
 
 export function ChatConsolePage() {
+  const t = useT();
   const { isGuest, openAuthDialog } = useAuth();
 
   if (isGuest) {
     return (
       <div className="space-y-6">
-        <h1 className="text-lg font-medium text-slate-900">Chat</h1>
-        <Card className="border border-slate-200/90 bg-white/75 shadow-lg backdrop-blur-xl">
-          <CardHeader>
-            <CardTitle className="text-sm">Sign in required</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Chat in the console; usage is billed from your account balance. Available models depend on your
-              subscription or server configuration.
-            </p>
-            <Button type="button" onClick={() => openAuthDialog("login")}>
-              Sign in to chat
+        <PanelCard title={t("chat.signInRequired")}>
+          <div className="space-y-4">
+            <p className={ct.pageDesc}>{t("chat.guestDesc")}</p>
+            <Button type="button" className="bg-teal-600 hover:bg-teal-500" onClick={() => openAuthDialog("login")}>
+              {t("chat.signInChat")}
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </PanelCard>
       </div>
     );
   }
 
   return (
-    <div className="-mx-4 flex min-h-[calc(100vh-8rem)] flex-col md:-mx-6">
+    <div className="flex min-h-0 flex-1 flex-col">
       <ChatPage />
     </div>
   );

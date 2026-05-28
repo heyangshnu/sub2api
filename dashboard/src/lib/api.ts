@@ -156,9 +156,52 @@ export interface DailyUsagePoint {
 }
 
 export interface UsageDailyResponse {
-  key_id: string;
+  key_id?: string;
+  scope?: string;
   days: number;
   points: DailyUsagePoint[];
+}
+
+export interface UsageSummary {
+  today_spend_usd: number;
+  today_request_count: number;
+  today_input_tokens: number;
+  today_output_tokens: number;
+  month_spend_usd: number;
+  month_request_count: number;
+  total_spend_usd: number;
+  total_request_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
+export interface ModelUsageRow {
+  model: string;
+  request_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_consumed: number;
+}
+
+export interface UsageByModelResponse {
+  days: number;
+  rows: ModelUsageRow[];
+}
+
+export interface PaymentRecord {
+  id: string;
+  amount: number;
+  status: string;
+  stripe_session_id?: string;
+  note?: string;
+  created_at: string;
+}
+
+export interface PaymentsResponse {
+  payments: PaymentRecord[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface RequestLogEntry {
@@ -446,9 +489,45 @@ class APIClient {
     });
   }
 
+  async getAccountUsageDaily(days = 14): Promise<UsageDailyResponse> {
+    const q = new URLSearchParams({ scope: "account", days: String(days) });
+    return this.authRequest<UsageDailyResponse>(`/dashboard/usage-daily?${q.toString()}`);
+  }
+
   async getUsageDaily(keyId: string, days = 14): Promise<UsageDailyResponse> {
     const q = new URLSearchParams({ key_id: keyId, days: String(days) });
     return this.authRequest<UsageDailyResponse>(`/dashboard/usage-daily?${q.toString()}`);
+  }
+
+  async getUsageSummary(): Promise<UsageSummary> {
+    return this.authRequest<UsageSummary>("/dashboard/usage/summary");
+  }
+
+  async getUsageByModel(days = 30): Promise<UsageByModelResponse> {
+    const q = new URLSearchParams({ days: String(days) });
+    return this.authRequest<UsageByModelResponse>(`/dashboard/usage/by-model?${q.toString()}`);
+  }
+
+  async downloadUsageExport(month?: string): Promise<Blob> {
+    const q = new URLSearchParams();
+    if (month) q.set("month", month);
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    const headers: Record<string, string> = {};
+    if (this.jwtToken) headers.Authorization = `Bearer ${this.jwtToken}`;
+    const response = await fetch(`${API_BASE}/dashboard/usage/export${suffix}`, { headers });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(httpMessageFromBody(text, response.status));
+    }
+    return new Blob([text], { type: "text/csv;charset=utf-8" });
+  }
+
+  async listPayments(limit = 20, offset = 0): Promise<PaymentsResponse> {
+    const q = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
+    return this.authRequest<PaymentsResponse>(`/dashboard/payments?${q.toString()}`);
   }
 
   async getRequestLogs(

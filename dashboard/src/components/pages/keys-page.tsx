@@ -1,49 +1,36 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
+import { ct } from "@/lib/console-typography";
+import { useT } from "@/lib/i18n";
 import { ApiKeysCard } from "@/components/api-keys-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-const glassCard =
-  "border border-slate-200/90 bg-white/75 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
+import { PanelCard } from "@/components/ui/panel-card";
+import { cn } from "@/lib/utils";
 
 export function KeysPage() {
+  const t = useT();
   const { isGuest, openAuthDialog } = useAuth();
 
   if (isGuest) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-lg font-medium text-slate-900">API Keys</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Create keys for OpenAI-compatible API access, per-project usage, and spend limits.
-          </p>
-        </div>
-        <Card className={glassCard}>
-          <CardHeader>
-            <CardTitle className="text-sm">Base URL</CardTitle>
-            <CardDescription className="font-mono text-xs">
-              {process.env.NEXT_PUBLIC_API_URL || "https://api.cloudtoken.uk"}/v1
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Sign in to create keys. The full key is shown only once—save it securely. IP allowlist,
-              spend limits, and connectivity checks are supported.
-            </p>
-            <Button type="button" onClick={() => openAuthDialog("login")}>
-              Sign in to manage API keys
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="mx-auto max-w-5xl space-y-5">
+        <p className={ct.pageDesc}>{t("keys.guestDesc")}</p>
+        <PanelCard
+          title={t("keys.baseUrl")}
+          description={`${process.env.NEXT_PUBLIC_API_URL || "https://api.cloudtoken.uk"}/v1`}
+        >
+          <p className={cn(ct.alert, "mb-4")}>{t("keys.guestBody")}</p>
+          <Button type="button" className="bg-teal-600 text-sm hover:bg-teal-500" onClick={() => openAuthDialog("login")}>
+            {t("keys.signInManage")}
+          </Button>
+        </PanelCard>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-medium text-slate-900">API Keys</h1>
+    <div className="mx-auto max-w-5xl">
       <ApiKeysCard />
     </div>
   );

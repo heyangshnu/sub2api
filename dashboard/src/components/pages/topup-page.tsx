@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { apiClient } from "@/lib/api";
+import { ct } from "@/lib/console-typography";
+import { formatLocaleDateTime, useLocale, useT } from "@/lib/i18n";
+import { apiClient, PaymentRecord } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PanelCard } from "@/components/ui/panel-card";
+import {
+  ConsoleTable,
+  ConsoleTableHead,
+  ConsoleTd,
+  ConsoleTh,
+} from "@/components/ui/console-table";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -12,23 +21,43 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatUsd } from "@/lib/utils";
-
-const TOPUP_OPTIONS = [
-  { value: "5", label: "$5", description: "Starter" },
-  { value: "10", label: "$10", description: "Personal" },
-  { value: "20", label: "$20", description: "Regular" },
-  { value: "50", label: "$50", description: "Power user" },
-  { value: "100", label: "$100", description: "Team" },
-];
-
-const glassCard =
-  "border border-slate-200/90 bg-white/75 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
+import { cn, formatUsd } from "@/lib/utils";
 
 export function TopupPage() {
+  const t = useT();
+  const { locale } = useLocale();
   const { isGuest, isAuthenticated, userProfile, requireAuth, refreshProfile } = useAuth();
   const [amount, setAmount] = useState("10");
   const [loading, setLoading] = useState(false);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const topupOptions = useMemo(
+    () => [
+      { value: "5", label: "$5", description: t("topup.tierStarter") },
+      { value: "10", label: "$10", description: t("topup.tierPersonal") },
+      { value: "20", label: "$20", description: t("topup.tierRegular") },
+      { value: "50", label: "$50", description: t("topup.tierPower") },
+      { value: "100", label: "$100", description: t("topup.tierTeam") },
+    ],
+    [t]
+  );
+
+  const loadPayments = useCallback(async () => {
+    if (!apiClient.getToken()) return;
+    setPaymentsLoading(true);
+    try {
+      const res = await apiClient.listPayments(20, 0);
+      setPayments(res.payments || []);
+    } catch {
+      setPayments([]);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) void loadPayments();
+  }, [isAuthenticated, loadPayments]);
 
   const handleTopup = () => {
     requireAuth(async () => {
@@ -38,7 +67,7 @@ export function TopupPage() {
         if (data.checkout_url) window.location.href = data.checkout_url;
         await refreshProfile();
       } catch (err) {
-        alert(err instanceof Error ? err.message : "Payment failed");
+        alert(err instanceof Error ? err.message : t("topup.paymentFailed"));
       } finally {
         setLoading(false);
       }
@@ -46,37 +75,32 @@ export function TopupPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-medium text-slate-900">Top up</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Add USD to your account for API and chat usage. Subscriptions (if enabled) control model access and
-          period spend caps separately.
-        </p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-5">
+      <p className={ct.pageDesc}>{t("topup.desc")}</p>
 
       {isAuthenticated && userProfile && (
-        <Card className={glassCard}>
-          <CardContent className="pt-4 text-sm">
-            Top-up balance: <strong>{formatUsd(userProfile.balance, 2)}</strong> · Spendable{" "}
-            <strong>{formatUsd(userProfile.spendable_balance, 2)}</strong>
-          </CardContent>
-        </Card>
+        <PanelCard>
+          <p className={ct.alert}>
+            {t("topup.balanceLine", {
+              topup: formatUsd(userProfile.balance, 2),
+              spendable: formatUsd(userProfile.spendable_balance, 2),
+            })}
+          </p>
+        </PanelCard>
       )}
 
-      <Card className={glassCard}>
-        <CardHeader>
-          <CardTitle className="text-sm">Select amount</CardTitle>
-          <CardDescription>Secure payment via Stripe</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <PanelCard
+        title={t("topup.selectAmount")}
+        description={t("topup.stripeNote")}
+      >
+        <div className="space-y-4">
           <Select value={amount} onValueChange={(v) => v && setAmount(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select amount" />
+            <SelectTrigger className={ct.tableCell}>
+              <SelectValue placeholder={t("topup.selectPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              {TOPUP_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
+              {topupOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value} className="text-sm">
                   {opt.label} — {opt.description}
                 </SelectItem>
               ))}
@@ -84,14 +108,55 @@ export function TopupPage() {
           </Select>
           <Button
             type="button"
-            className="w-full bg-emerald-600 hover:bg-emerald-700"
+            className="w-full bg-teal-600 text-sm hover:bg-teal-500"
             disabled={loading}
             onClick={handleTopup}
           >
-            {isGuest ? "Sign in to pay" : loading ? "Redirecting…" : `Pay $${amount}`}
+            {isGuest
+              ? t("topup.signInPay")
+              : loading
+                ? t("topup.redirecting")
+                : t("topup.pay", { amount })}
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </PanelCard>
+
+      {isAuthenticated && (
+        <PanelCard title={t("topup.paymentHistory")}>
+          {paymentsLoading ? (
+            <Skeleton className="h-20 w-full rounded-xl" />
+          ) : payments.length === 0 ? (
+            <p className={cn("py-6 text-center", ct.empty)}>{t("topup.noPayments")}</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-slate-200/80">
+              <ConsoleTable className="min-w-[320px]">
+                <ConsoleTableHead>
+                  <tr>
+                    <ConsoleTh>{t("topup.colDate")}</ConsoleTh>
+                    <ConsoleTh>{t("topup.colAmount")}</ConsoleTh>
+                    <ConsoleTh>{t("topup.colStatus")}</ConsoleTh>
+                  </tr>
+                </ConsoleTableHead>
+                <tbody>
+                  {payments.map((p) => (
+                    <tr key={p.id} className="border-t border-slate-100">
+                      <ConsoleTd variant="muted">
+                        {formatLocaleDateTime(p.created_at, locale)}
+                      </ConsoleTd>
+                      <ConsoleTd variant="strong" className="text-teal-700">
+                        {formatUsd(p.amount, 2)}
+                      </ConsoleTd>
+                      <ConsoleTd variant="muted">
+                        {p.status === "completed" ? t("topup.statusCompleted") : p.status}
+                      </ConsoleTd>
+                    </tr>
+                  ))}
+                </tbody>
+              </ConsoleTable>
+            </div>
+          )}
+        </PanelCard>
+      )}
     </div>
   );
 }

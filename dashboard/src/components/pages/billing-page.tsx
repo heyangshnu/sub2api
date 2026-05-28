@@ -1,39 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { formatLocaleDateTime, useLocale, useT } from "@/lib/i18n";
 import { apiClient, Transaction } from "@/lib/api";
+import { ct } from "@/lib/console-typography";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PanelCard } from "@/components/ui/panel-card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  ConsoleTable,
+  ConsoleTableHead,
+  ConsoleTd,
+  ConsoleTh,
+} from "@/components/ui/console-table";
 import { isConsumeType, isTopupType, transactionTypeLabel } from "@/lib/transaction-labels";
 import { cn, formatUsd } from "@/lib/utils";
 
-const glassCard =
-  "border border-slate-200/90 bg-white/75 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
-
 type Tab = "topup" | "consume";
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString("en-US");
-}
-
 export function BillingPage() {
+  const t = useT();
+  const { locale } = useLocale();
   const { isGuest, isAuthenticated, requireAuth } = useAuth();
   const [tab, setTab] = useState<Tab>("consume");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const limit = 10;
-
   const load = useCallback(async () => {
     if (!apiClient.getToken()) return;
     const txData = await apiClient.getAccountTransactions(100, 0);
@@ -49,132 +43,111 @@ export function BillingPage() {
     if (isAuthenticated) void load();
   }, [isAuthenticated, load]);
 
-  const guestTable = (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Time</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Model</TableHead>
-          <TableHead className="text-right">Amount</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        <TableRow>
-          <TableCell colSpan={4} className="text-center text-slate-500">
-            Sign in to view billing details
-          </TableCell>
-        </TableRow>
-      </TableBody>
-    </Table>
-  );
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-medium text-slate-900">Billing</h1>
-        <p className="mt-2 text-sm text-slate-600">Top-ups and API / chat usage</p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-5">
+      <p className={ct.pageDesc}>{t("billing.desc")}</p>
 
       <div className="flex gap-2">
-        {(["consume", "topup"] as Tab[]).map((t) => (
+        {(["consume", "topup"] as Tab[]).map((tabKey) => (
           <Button
-            key={t}
+            key={tabKey}
             type="button"
-            variant={tab === t ? "default" : "outline"}
+            variant={tab === tabKey ? "default" : "outline"}
             size="sm"
+            className={tab === tabKey ? "bg-teal-600 hover:bg-teal-500" : ""}
             onClick={() => {
               setOffset(0);
-              setTab(t);
-              if (isGuest) return;
+              setTab(tabKey);
             }}
           >
-            {t === "consume" ? "Usage" : "Top-ups"}
+            {tabKey === "consume" ? t("billing.tabUsage") : t("billing.tabTopup")}
           </Button>
         ))}
       </div>
 
-      <Card className={glassCard}>
-        <CardHeader>
-          <CardTitle className="text-sm">{tab === "consume" ? "Usage" : "Top-ups"}</CardTitle>
-          <CardDescription>
-            {isGuest ? "Preview" : `${total} entries`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isGuest ? (
-            guestTable
-          ) : transactions.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500">No records</p>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+      <PanelCard
+        title={tab === "consume" ? t("billing.tabUsage") : t("billing.tabTopup")}
+        description={isGuest ? t("common.preview") : t("common.entries", { count: total })}
+      >
+        {isGuest ? (
+          <p className={cn("py-8 text-center", ct.empty)}>{t("billing.signInView")}</p>
+        ) : transactions.length === 0 ? (
+          <p className={cn("py-8 text-center", ct.empty)}>{t("billing.noRecords")}</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-lg border border-slate-200/80">
+              <ConsoleTable>
+                <ConsoleTableHead>
+                  <tr>
+                    <ConsoleTh>{t("billing.colTime")}</ConsoleTh>
+                    <ConsoleTh>{t("billing.colType")}</ConsoleTh>
+                    <ConsoleTh>{t("billing.colModel")}</ConsoleTh>
+                    <ConsoleTh className="text-right">{t("billing.colAmount")}</ConsoleTh>
+                    <ConsoleTh className="text-right">{t("billing.colBalance")}</ConsoleTh>
+                  </tr>
+                </ConsoleTableHead>
+                <tbody>
                   {transactions.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-sm">{formatDate(tx.created_at)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{transactionTypeLabel(tx.type)}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">{tx.model || "—"}</TableCell>
-                      <TableCell
+                    <tr key={tx.id} className="border-t border-slate-100">
+                      <ConsoleTd variant="muted">
+                        {formatLocaleDateTime(tx.created_at, locale)}
+                      </ConsoleTd>
+                      <ConsoleTd>
+                        <Badge variant="outline" className="text-sm font-normal">
+                          {transactionTypeLabel(tx.type, t)}
+                        </Badge>
+                      </ConsoleTd>
+                      <ConsoleTd>{tx.model || "—"}</ConsoleTd>
+                      <ConsoleTd
                         className={cn(
-                          "text-right text-sm",
-                          isTopupType(tx.type) ? "text-emerald-600" : "text-rose-600"
+                          "text-right",
+                          isTopupType(tx.type) ? "text-teal-600" : "text-rose-600"
                         )}
+                        variant="strong"
                       >
                         {isTopupType(tx.type) ? "+" : "-"}
                         {formatUsd(tx.amount, 2)}
-                      </TableCell>
-                      <TableCell className="text-right text-sm">
+                      </ConsoleTd>
+                      <ConsoleTd className="text-right" variant="strong">
                         {formatUsd(tx.balance_after, 2)}
-                      </TableCell>
-                    </TableRow>
+                      </ConsoleTd>
+                    </tr>
                   ))}
-                </TableBody>
-              </Table>
-              {total > limit && (
-                <div className="mt-4 flex justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={offset === 0}
-                    onClick={() => requireAuth(() => setOffset(Math.max(0, offset - limit)))}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={offset + limit >= total}
-                    onClick={() => requireAuth(() => setOffset(offset + limit))}
-                  >
-                    Next
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-          {isGuest && (
-            <Button
-              type="button"
-              className="mt-4 w-full"
-              onClick={() => requireAuth(() => {})}
-            >
-              Sign in to view billing
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+                </tbody>
+              </ConsoleTable>
+            </div>
+            {total > limit && (
+              <div className="mt-4 flex justify-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={offset === 0}
+                  onClick={() => requireAuth(() => setOffset(Math.max(0, offset - limit)))}
+                >
+                  {t("common.previous")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={offset + limit >= total}
+                  onClick={() => requireAuth(() => setOffset(offset + limit))}
+                >
+                  {t("common.next")}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+        {isGuest && (
+          <Button
+            type="button"
+            className="mt-4 w-full bg-teal-600 text-sm hover:bg-teal-500"
+            onClick={() => requireAuth(() => {})}
+          >
+            {t("billing.signInBilling")}
+          </Button>
+        )}
+      </PanelCard>
     </div>
   );
 }

@@ -1,52 +1,55 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { apiClient, DailyUsagePoint } from "@/lib/api";
+import { useCardBounceDelay } from "@/lib/use-card-bounce-delay";
+import { useT } from "@/lib/i18n";
+import {
+  apiClient,
+  DailyUsagePoint,
+  ModelUsageRow,
+  UsageSummary,
+} from "@/lib/api";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PanelCard } from "@/components/ui/panel-card";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ct } from "@/lib/console-typography";
+import { ConsoleTable, ConsoleTableHead, ConsoleTd, ConsoleTh } from "@/components/ui/console-table";
 import { cn, formatUsd } from "@/lib/utils";
 
-const glassCard =
-  "border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50";
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card className={glassCard}>
-      <CardHeader className="pb-2">
-        <CardDescription className="text-sm text-slate-800">{label}</CardDescription>
-        <CardTitle className="mt-1 text-sm font-normal tabular-nums text-slate-900">{value}</CardTitle>
-      </CardHeader>
-    </Card>
-  );
-}
+const DAY_OPTIONS = [7, 14, 30] as const;
 
 function UsageBars({ points }: { points: DailyUsagePoint[] }) {
+  const t = useT();
   const max = Math.max(...points.map((p) => p.total_consumed), 1e-9);
   return (
-    <div className="space-y-3">
-      <div className="flex h-40 items-end gap-1 border-b border-slate-200/80 pb-1">
+    <div className="space-y-4">
+      <div className="flex h-44 items-end gap-1.5 border-b border-slate-200/90 pb-2">
         {points.map((p) => {
           const h = Math.round((p.total_consumed / max) * 100);
           return (
             <div
               key={p.date}
-              className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
-              title={`${p.date}: $${p.total_consumed.toFixed(4)} · ${p.request_count} requests`}
+              className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5"
+              title={t("usage.chartTooltip", {
+                date: p.date,
+                amount: p.total_consumed.toFixed(4),
+                count: p.request_count,
+              })}
             >
               <div
-                className="w-full max-w-[14px] rounded-t-md bg-gradient-to-t from-sky-600 to-sky-400"
-                style={{ height: `${Math.max(h, 2)}%` }}
+                className="w-full max-w-4 rounded-t-md bg-gradient-to-t from-teal-600 to-teal-400 shadow-sm"
+                style={{ height: `${Math.max(h, 4)}%` }}
               />
             </div>
           );
         })}
       </div>
-      <div className="flex gap-1 text-[10px] leading-tight text-slate-500">
+      <div className={cn("flex gap-1.5", ct.tableCellMuted)}>
         {points.map((p) => (
-          <div key={p.date} className="min-w-0 flex-1 text-center">
+          <div key={p.date} className="min-w-0 flex-1 text-center tabular-nums">
             {p.date.slice(5)}
           </div>
         ))}
@@ -55,39 +58,108 @@ function UsageBars({ points }: { points: DailyUsagePoint[] }) {
   );
 }
 
+function DayToggle({
+  chartDays,
+  setChartDays,
+}: {
+  chartDays: number;
+  setChartDays: (d: number) => void;
+}) {
+  const t = useT();
+  const dayLabel = (d: number) =>
+    d === 7 ? t("usage.days7") : d === 14 ? t("usage.days14") : t("usage.days30");
+
+  return (
+    <div className="inline-flex rounded-xl border border-slate-200/90 bg-slate-50/80 p-1">
+      {DAY_OPTIONS.map((d) => (
+        <button
+          key={d}
+          type="button"
+          onClick={() => setChartDays(d)}
+          className={cn(
+            "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+            chartDays === d
+              ? "bg-teal-600 text-white shadow-sm"
+              : "text-slate-600 hover:bg-white hover:text-slate-900"
+          )}
+        >
+          {dayLabel(d)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function UsagePage() {
+  const t = useT();
   const { isAuthenticated, isGuest, userProfile, apiKeys, apiKey, requireAuth, openAuthDialog, refreshProfile } =
     useAuth();
-  const [loading, setLoading] = useState(false);
-  const [usageTotal, setUsageTotal] = useState<number | null>(null);
-  const [requestCount, setRequestCount] = useState<number | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summary, setSummary] = useState<UsageSummary | null>(null);
+  const [chartDays, setChartDays] = useState<number>(14);
+  const [accountPoints, setAccountPoints] = useState<DailyUsagePoint[]>([]);
   const [chartKeyId, setChartKeyId] = useState("");
-  const [usagePoints, setUsagePoints] = useState<DailyUsagePoint[]>([]);
+  const [keyPoints, setKeyPoints] = useState<DailyUsagePoint[]>([]);
+  const [modelRows, setModelRows] = useState<ModelUsageRow[]>([]);
   const [dailyLoading, setDailyLoading] = useState(false);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const rippleBase = useCardBounceDelay();
 
   useEffect(() => {
     if (isAuthenticated) void refreshProfile();
   }, [isAuthenticated, refreshProfile]);
 
-  const loadUsage = useCallback(async () => {
-    if (!apiClient.getToken() || !apiKey) return;
-    setLoading(true);
+  const loadSummary = useCallback(async () => {
+    if (!apiClient.getToken()) return;
+    setSummaryLoading(true);
     try {
-      const u = await apiClient.getUsage();
-      setUsageTotal(u.total_used);
-      setRequestCount(u.request_count);
+      const s = await apiClient.getUsageSummary();
+      setSummary(s);
     } catch {
-      setUsageTotal(null);
-      setRequestCount(null);
+      setSummary(null);
     } finally {
-      setLoading(false);
+      setSummaryLoading(false);
     }
-  }, [apiKey]);
+  }, []);
+
+  const loadAccountChart = useCallback(async () => {
+    if (!apiClient.getToken()) return;
+    setDailyLoading(true);
+    try {
+      const res = await apiClient.getAccountUsageDaily(chartDays);
+      setAccountPoints(res.points || []);
+    } catch {
+      setAccountPoints([]);
+    } finally {
+      setDailyLoading(false);
+    }
+  }, [chartDays]);
+
+  const loadByModel = useCallback(async () => {
+    if (!apiClient.getToken()) return;
+    setModelLoading(true);
+    try {
+      const res = await apiClient.getUsageByModel(30);
+      setModelRows(res.rows || []);
+    } catch {
+      setModelRows([]);
+    } finally {
+      setModelLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    void loadUsage();
-  }, [isAuthenticated, loadUsage, apiKey]);
+    void loadSummary();
+    void loadByModel();
+  }, [isAuthenticated, loadSummary, loadByModel]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void loadAccountChart();
+  }, [isAuthenticated, loadAccountChart]);
 
   useEffect(() => {
     const firstId = apiKeys.find((k) => k.id)?.id ?? "";
@@ -96,123 +168,207 @@ export function UsagePage() {
 
   useEffect(() => {
     if (!isAuthenticated || !chartKeyId || !apiClient.getToken()) {
-      setUsagePoints([]);
+      setKeyPoints([]);
       return;
     }
     let cancelled = false;
     (async () => {
-      setDailyLoading(true);
       try {
-        const res = await apiClient.getUsageDaily(chartKeyId, 14);
-        if (!cancelled) setUsagePoints(res.points || []);
+        const res = await apiClient.getUsageDaily(chartKeyId, chartDays);
+        if (!cancelled) setKeyPoints(res.points || []);
       } catch {
-        if (!cancelled) setUsagePoints([]);
-      } finally {
-        if (!cancelled) setDailyLoading(false);
+        if (!cancelled) setKeyPoints([]);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [chartKeyId, isAuthenticated, apiKeys]);
+  }, [chartKeyId, chartDays, isAuthenticated, apiKeys]);
+
+  const handleExport = async () => {
+    if (!apiClient.getToken()) return;
+    setExporting(true);
+    try {
+      const month = new Date().toISOString().slice(0, 7);
+      const blob = await apiClient.downloadUsageExport(month);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `usage-${month}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const dash = "—";
+  const stat = (loading: boolean, format: () => string) => (loading ? "…" : format());
+  const todayTokenTotal =
+    (summary?.today_input_tokens ?? 0) + (summary?.today_output_tokens ?? 0);
+  const totalTokenTotal =
+    (summary?.total_input_tokens ?? 0) + (summary?.total_output_tokens ?? 0);
+
+  const pageActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="border-slate-200"
+        disabled={exporting}
+        onClick={() => void handleExport()}
+      >
+        {exporting ? t("usage.exporting") : t("usage.exportCsv")}
+      </Button>
+      {chartKeyId ? (
+        <Link
+          href={`/account/logs?key_id=${encodeURIComponent(chartKeyId)}`}
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-slate-200")}
+        >
+          {t("usage.requestLogs")}
+        </Link>
+      ) : null}
+    </div>
+  );
 
   if (isGuest) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-lg font-medium text-slate-900">Usage</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            OpenAI-compatible API gateway · Token-based billing · Per-key usage stats
-          </p>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatTile label={t("usage.balanceUsd")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.todaySpend")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.monthSpend")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.totalSpent")} value={dash} rippleDelay={rippleBase} />
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <StatCard label="Account balance (USD)" value="—" />
-          <StatCard label="Total spent (USD)" value="—" />
-          <StatCard label="Requests" value="—" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatTile label={t("usage.todayRequests")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.todayTokens")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.totalRequests")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.totalTokens")} value={dash} rippleDelay={rippleBase} />
         </div>
-        <Card className={glassCard}>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Last 14 days</CardTitle>
-            <CardDescription className="text-sm text-slate-600">
-              Sign in to view your usage and per-key breakdown
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/80 text-sm text-slate-500">
-              Sample chart area
-            </div>
-            <Button
-              type="button"
-              className="mt-4 bg-slate-900 hover:bg-slate-800"
-              onClick={() => openAuthDialog("login")}
-            >
-              Sign in to view usage
-            </Button>
-          </CardContent>
-        </Card>
+        <PanelCard
+          title={t("usage.last14")}
+          description={t("usage.guestChartDesc")}
+          rippleDelay={rippleBase}
+        >
+          <div className={cn("flex h-40 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/80", ct.empty)}>
+            {t("usage.sampleChart")}
+          </div>
+          <Button
+            type="button"
+            className="mt-5 bg-teal-600 hover:bg-teal-500"
+            onClick={() => openAuthDialog("login")}
+          >
+            {t("usage.signInToView")}
+          </Button>
+        </PanelCard>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-medium text-slate-900">Usage</h1>
-        {chartKeyId && (
-          <Link
-            href={`/account/logs?key_id=${encodeURIComponent(chartKeyId)}`}
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "border-slate-200")}
-          >
-            Request logs
-          </Link>
-        )}
-      </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      {pageActions ? <div className="flex justify-end">{pageActions}</div> : null}
 
       {!apiKey && (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50/90 px-4 py-3 text-sm text-sky-950">
-          Create an API key on the{" "}
+        <div className={cn("rounded-xl border border-teal-200/90 bg-teal-50/80 px-4 py-3", ct.alertBrand)}>
+          {t("usage.noApiKeyBefore")}{" "}
           <button
             type="button"
             className="font-medium underline"
             onClick={() => requireAuth(() => void (window.location.href = "/keys"))}
           >
-            API Keys
+            {t("usage.apiKeysLink")}
           </button>{" "}
-          page to show usage charts (auto-bound after creation).
+          {t("usage.noApiKeyAfter")}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <StatCard label="Top-up balance (USD)" value={formatUsd(userProfile?.balance, 2)} />
-        <StatCard label="Spendable balance (USD)" value={formatUsd(userProfile?.spendable_balance, 2)} />
-        <StatCard
-          label="Total spent (USD)"
-          value={loading ? "…" : formatUsd(usageTotal ?? 0, 2)}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label={t("usage.balanceUsd")}
+          value={formatUsd(userProfile?.balance, 2)}
+          rippleDelay={rippleBase}
+        />
+        <StatTile
+          label={t("usage.todaySpend")}
+          value={stat(summaryLoading, () => formatUsd(summary?.today_spend_usd ?? 0, 2))}
+          rippleDelay={rippleBase}
+        />
+        <StatTile
+          label={t("usage.monthSpend")}
+          value={stat(summaryLoading, () => formatUsd(summary?.month_spend_usd ?? 0, 2))}
+          rippleDelay={rippleBase}
+        />
+        <StatTile
+          label={t("usage.totalSpent")}
+          value={stat(summaryLoading, () => formatUsd(summary?.total_spend_usd ?? 0, 2))}
+          rippleDelay={rippleBase}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label={t("usage.todayRequests")}
+          value={stat(summaryLoading, () => String(summary?.today_request_count ?? 0))}
+          rippleDelay={rippleBase}
+        />
+        <StatTile
+          label={t("usage.todayTokens")}
+          value={stat(summaryLoading, () => todayTokenTotal.toLocaleString())}
+          rippleDelay={rippleBase}
+        />
+        <StatTile
+          label={t("usage.totalRequests")}
+          value={stat(summaryLoading, () => String(summary?.total_request_count ?? 0))}
+          rippleDelay={rippleBase}
+        />
+        <StatTile
+          label={t("usage.totalTokens")}
+          value={stat(summaryLoading, () => totalTokenTotal.toLocaleString())}
+          rippleDelay={rippleBase}
         />
       </div>
 
       {userProfile?.subscription?.active && (
-        <Card className={glassCard}>
-          <CardContent className="pt-4 text-sm text-slate-700">
-            Current plan: <strong>{userProfile.subscription.plan_id}</strong> · Remaining cap this period{" "}
-            <strong>{formatUsd(userProfile.subscription.remaining_cap_usd, 2)}</strong>
-          </CardContent>
-        </Card>
+        <PanelCard rippleDelay={rippleBase} contentClassName="!py-4">
+          <p className={ct.alert}>
+            {t("usage.planRemaining", {
+              plan: userProfile.subscription.plan_id,
+              amount: formatUsd(userProfile.subscription.remaining_cap_usd, 2),
+            })}
+          </p>
+        </PanelCard>
       )}
 
+      <PanelCard
+        title={t("usage.accountTrend")}
+        description={t("usage.ledgerNote")}
+        action={<DayToggle chartDays={chartDays} setChartDays={setChartDays} />}
+        rippleDelay={rippleBase}
+      >
+        {dailyLoading ? (
+          <Skeleton className="h-44 w-full rounded-xl" />
+        ) : accountPoints.length === 0 ? (
+          <p className={cn("py-12 text-center", ct.empty)}>{t("usage.noUsage")}</p>
+        ) : (
+          <UsageBars points={accountPoints} />
+        )}
+      </PanelCard>
+
       {apiKeys.length > 0 && (
-        <Card className={glassCard}>
-          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <CardTitle className="text-sm font-medium">Daily spend (last 14 days)</CardTitle>
-              <CardDescription className="mt-1 text-sm text-slate-600">
-                Aggregated from billing ledger (UTC)
-              </CardDescription>
-            </div>
+        <PanelCard
+          title={t("usage.perKeyChart")}
+          description={t("usage.ledgerNote")}
+          action={
             <select
-              className="min-w-[200px] rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
+              className={cn("min-w-[200px] rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm", ct.tableCell)}
               value={chartKeyId}
               onChange={(e) => setChartKeyId(e.target.value)}
+              aria-label={t("usage.selectKey")}
             >
               {apiKeys.map((k) => (
                 <option key={k.id} value={k.id}>
@@ -220,22 +376,53 @@ export function UsagePage() {
                 </option>
               ))}
             </select>
-          </CardHeader>
-          <CardContent>
-            {dailyLoading ? (
-              <Skeleton className="h-36 w-full rounded-xl" />
-            ) : usagePoints.length === 0 ? (
-              <p className="py-10 text-center text-sm text-slate-500">No usage in this period</p>
-            ) : (
-              <UsageBars points={usagePoints} />
-            )}
-          </CardContent>
-        </Card>
+          }
+          rippleDelay={rippleBase}
+        >
+          {keyPoints.length === 0 ? (
+            <p className={cn("py-12 text-center", ct.empty)}>{t("usage.noUsage")}</p>
+          ) : (
+            <UsageBars points={keyPoints} />
+          )}
+        </PanelCard>
       )}
 
-      <p className="text-xs text-slate-500">
-        Requests (this key): {requestCount ?? "—"}
-      </p>
+      <PanelCard
+        title={t("usage.byModel")}
+        description={t("usage.byModelDays", { days: 30 })}
+        rippleDelay={rippleBase}
+      >
+        {modelLoading ? (
+          <Skeleton className="h-24 w-full rounded-xl" />
+        ) : modelRows.length === 0 ? (
+          <p className={cn("py-10 text-center", ct.empty)}>{t("usage.noUsage")}</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200/80">
+            <ConsoleTable className="min-w-[480px]">
+              <ConsoleTableHead>
+                <tr>
+                  <ConsoleTh>{t("usage.colModel")}</ConsoleTh>
+                  <ConsoleTh>{t("usage.colRequests")}</ConsoleTh>
+                  <ConsoleTh>{t("usage.colInput")}</ConsoleTh>
+                  <ConsoleTh>{t("usage.colOutput")}</ConsoleTh>
+                  <ConsoleTh>{t("usage.colSpend")}</ConsoleTh>
+                </tr>
+              </ConsoleTableHead>
+              <tbody>
+                {modelRows.map((row) => (
+                  <tr key={row.model} className="border-t border-slate-100">
+                    <ConsoleTd variant="mono">{row.model}</ConsoleTd>
+                    <ConsoleTd>{row.request_count}</ConsoleTd>
+                    <ConsoleTd>{row.input_tokens.toLocaleString()}</ConsoleTd>
+                    <ConsoleTd>{row.output_tokens.toLocaleString()}</ConsoleTd>
+                    <ConsoleTd variant="strong">{formatUsd(row.total_consumed, 4)}</ConsoleTd>
+                  </tr>
+                ))}
+              </tbody>
+            </ConsoleTable>
+          </div>
+        )}
+      </PanelCard>
     </div>
   );
 }

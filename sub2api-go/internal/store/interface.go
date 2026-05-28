@@ -70,6 +70,11 @@ type Store interface {
 
 	// Analytics & audit (Dashboard + chat)
 	AggregateConsumeByDay(ctx context.Context, keyHash string, days int) ([]model.DailyUsagePoint, error)
+	AggregateUserConsumeByDay(ctx context.Context, userID string, days int) ([]model.DailyUsagePoint, error)
+	GetUsageSummary(ctx context.Context, userID string) (*model.UsageSummary, error)
+	AggregateConsumeByModel(ctx context.Context, userID string, days int) ([]model.ModelUsageRow, error)
+	ListPaymentRecords(ctx context.Context, userID string, limit, offset int) ([]*model.PaymentRecord, int, error)
+	ExportUsageCSV(ctx context.Context, userID, month string) ([]byte, error)
 	AppendRequestLog(ctx context.Context, entry *model.RequestLogEntry) error
 	ListRequestLogs(ctx context.Context, keyID string, limit, offset int) ([]*model.RequestLogEntry, int, error)
 

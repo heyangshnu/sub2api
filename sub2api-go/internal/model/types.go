@@ -232,6 +232,39 @@ type DailyUsagePoint struct {
 	RequestCount  int     `json:"request_count"`
 }
 
+// UsageSummary is account-level usage stats (UTC day/month and all-time).
+type UsageSummary struct {
+	TodaySpendUSD      float64 `json:"today_spend_usd"`
+	TodayRequestCount  int     `json:"today_request_count"`
+	TodayInputTokens   int64   `json:"today_input_tokens"`
+	TodayOutputTokens  int64   `json:"today_output_tokens"`
+	MonthSpendUSD      float64 `json:"month_spend_usd"`
+	MonthRequestCount  int     `json:"month_request_count"`
+	TotalSpendUSD      float64 `json:"total_spend_usd"`
+	TotalRequestCount  int     `json:"total_request_count"`
+	TotalInputTokens   int64   `json:"total_input_tokens"`
+	TotalOutputTokens  int64   `json:"total_output_tokens"`
+}
+
+// ModelUsageRow aggregates consume by model for a period.
+type ModelUsageRow struct {
+	Model         string  `json:"model"`
+	RequestCount  int     `json:"request_count"`
+	InputTokens   int64   `json:"input_tokens"`
+	OutputTokens  int64   `json:"output_tokens"`
+	TotalConsumed float64 `json:"total_consumed"`
+}
+
+// PaymentRecord is a completed top-up row for the dashboard.
+type PaymentRecord struct {
+	ID              string    `json:"id"`
+	Amount          float64   `json:"amount"`
+	Status          string    `json:"status"`
+	StripeSessionID string    `json:"stripe_session_id,omitempty"`
+	Note            string    `json:"note,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 // RequestLogEntry is a lightweight chat audit row (no prompt / response body).
 type RequestLogEntry struct {
 	ID            string    `json:"id"`

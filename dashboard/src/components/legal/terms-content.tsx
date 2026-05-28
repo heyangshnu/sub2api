@@ -1,11 +1,21 @@
+"use client";
+
+import { TermsContentZh } from "@/components/legal/terms-content-zh";
+import { useLocale } from "@/lib/i18n";
 import { TERMS_LAST_UPDATED, TERMS_VERSION } from "@/lib/terms";
 
 export function TermsContent() {
+  const { locale } = useLocale();
+  if (locale === "zh") {
+    return <TermsContentZh />;
+  }
+
   return (
     <article className="prose prose-slate max-w-none text-sm prose-headings:text-slate-900 prose-p:text-slate-700">
       <p className="text-xs text-slate-500">
         Version {TERMS_VERSION} · Last updated {TERMS_LAST_UPDATED}
       </p>
+      {/* English body — zh uses TermsContentZh */}
 
       <h2>1. Service Description</h2>
       <p>

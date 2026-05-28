@@ -9,11 +9,11 @@ export function TechBackground() {
         aria-hidden
       />
       <div
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_75%_at_50%_-18%,rgba(99,102,241,0.09),transparent_52%)]"
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_75%_at_50%_-18%,rgba(20,184,166,0.1),transparent_52%)]"
         aria-hidden
       />
       <div
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_55%_40%_at_100%_0%,rgba(56,189,248,0.07),transparent_48%)]"
+        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_55%_40%_at_100%_0%,rgba(45,212,191,0.08),transparent_48%)]"
         aria-hidden
       />
       <div

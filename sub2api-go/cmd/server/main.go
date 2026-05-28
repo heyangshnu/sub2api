@@ -172,6 +172,7 @@ func main() {
 		dashboard.POST("/change-password", authHandler.ChangePassword)
 		dashboard.POST("/payment/checkout", accountHandler.CreateAccountCheckout)
 		dashboard.GET("/account/transactions", accountHandler.ListAccountTransactions)
+		dashboard.GET("/payments", accountHandler.ListPayments)
 		dashboard.GET("/subscription/plans", subscriptionHandler.ListPlans)
 		dashboard.GET("/subscription", subscriptionHandler.GetSubscription)
 		dashboard.POST("/subscription/checkout", subscriptionHandler.CreateSubscriptionCheckout)
@@ -193,6 +194,9 @@ func main() {
 		dashboard.PATCH("/keys/:id", dashboardHandler.UpdateKeySettings)
 		dashboard.DELETE("/keys/:id", dashboardHandler.DeleteKey)
 		dashboard.GET("/usage-daily", dashboardHandler.GetUsageDaily)
+		dashboard.GET("/usage/summary", dashboardHandler.GetUsageSummary)
+		dashboard.GET("/usage/by-model", dashboardHandler.GetUsageByModel)
+		dashboard.GET("/usage/export", dashboardHandler.ExportUsage)
 		dashboard.GET("/request-logs", dashboardHandler.ListRequestLogs)
 		dashboard.GET("/models", dashboardHandler.ListModels)
 	}

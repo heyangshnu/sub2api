@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Lock, Mail, TrendingUp } from "lucide-react";
+import { LocaleToggle } from "@/components/locale-toggle";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type AuthMode = "login" | "register" | "forgot";
@@ -34,6 +36,7 @@ export function LoginForm({
   onSwitchToRegister,
   onSwitchToLogin,
 }: LoginFormProps = {}) {
+  const t = useT();
   const { loginWithEmail, register } = useAuth();
   const envEmailVerifyHint =
     process.env.NEXT_PUBLIC_EMAIL_VERIFY_ENABLED === "true";
@@ -135,15 +138,15 @@ export function LoginForm({
     setSuccessMessage("");
     const em = forgotEmail.trim();
     if (!em) {
-      setError("Please enter your email");
+      setError(t("auth.errEmailRequired"));
       return;
     }
     try {
       await apiClient.sendResetPasswordCode(em);
-      setSuccessMessage("Verification code sent. Check your inbox.");
+      setSuccessMessage(t("auth.errCodeSent"));
       setResetSendCooldown(60);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Send failed");
+      setError(e instanceof Error ? e.message : t("auth.errSendFailed"));
     }
   };
 
@@ -154,24 +157,24 @@ export function LoginForm({
     setSuccessMessage("");
 
     if (resetNewPassword !== resetConfirmPassword) {
-      setError("Passwords do not match");
+      setError(t("auth.errPasswordMismatch"));
       setIsLoading(false);
       return;
     }
     if (resetNewPassword.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError(t("auth.errPasswordShort"));
       setIsLoading(false);
       return;
     }
     const em = forgotEmail.trim();
     if (!em) {
-      setError("Please enter your email");
+      setError(t("auth.errEmailRequired"));
       setIsLoading(false);
       return;
     }
     const code = resetVerificationCode.trim();
     if (!/^\d{6}$/.test(code)) {
-      setError("Enter the 6-digit code from your email");
+      setError(t("auth.errCode6"));
       setIsLoading(false);
       return;
     }
@@ -181,9 +184,9 @@ export function LoginForm({
       setEmail(em);
       setPassword("");
       switchMode("login");
-      setSuccessMessage("Password reset. Sign in with your new password.");
+      setSuccessMessage(t("auth.errResetOk"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Reset failed");
+      setError(err instanceof Error ? err.message : t("auth.errResetFailed"));
     }
     setIsLoading(false);
   };
@@ -195,7 +198,7 @@ export function LoginForm({
 
     const result = await loginWithEmail(email, password);
     if (!result.success) {
-      setError(result.error || "Sign in failed");
+      setError(result.error || t("auth.errSignInFailed"));
     } else {
       onSuccess?.();
     }
@@ -209,25 +212,25 @@ export function LoginForm({
     setSuccessMessage("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("auth.errPasswordMismatch"));
       setIsLoading(false);
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError(t("auth.errPasswordShort"));
       setIsLoading(false);
       return;
     }
 
     if (emailVerifyEnabled && !verificationCode.trim()) {
-      setError("Enter the 6-digit verification code");
+      setError(t("auth.errCodeVerify"));
       setIsLoading(false);
       return;
     }
 
     if (!termsAccepted) {
-      setError("You must accept the User Agreement");
+      setError(t("auth.errTermsRequired"));
       setIsLoading(false);
       return;
     }
@@ -239,9 +242,7 @@ export function LoginForm({
       termsVersion,
     });
     if (result.success) {
-      setPostRegisterNotice(
-        `Account created. Sign in with this email and password. Top up before creating API keys.`
-      );
+      setPostRegisterNotice(t("auth.postRegister"));
       setSuccessMessage("");
       setError("");
       setVerificationCode("");
@@ -250,7 +251,7 @@ export function LoginForm({
       setTermsAccepted(false);
       setMode("login");
     } else {
-      setError(result.error || "Registration failed");
+      setError(result.error || t("auth.errRegisterFailed"));
     }
     setIsLoading(false);
   };
@@ -260,21 +261,21 @@ export function LoginForm({
     setSuccessMessage("");
     const em = email.trim();
     if (!em) {
-      setError("Please enter your email");
+      setError(t("auth.errEmailRequired"));
       return;
     }
     if (!termsAccepted) {
-      setError("Please accept the User Agreement first");
+      setError(t("auth.errTermsFirst"));
       return;
     }
     if (sendCooldown > 0) return;
     setSendCooldown(60);
     try {
       await apiClient.sendRegisterCode(em);
-      setSuccessMessage("Verification code sent. Check your inbox.");
+      setSuccessMessage(t("auth.errCodeSent"));
     } catch (e) {
       setSendCooldown(0);
-      setError(e instanceof Error ? e.message : "Send failed");
+      setError(e instanceof Error ? e.message : t("auth.errSendFailed"));
     }
   };
 
@@ -283,6 +284,9 @@ export function LoginForm({
   if (embedded) {
     return (
       <div className="px-4 py-4" data-auth-shell>
+        <div className="mb-3 flex justify-end">
+          <LocaleToggle />
+        </div>
         <div className="w-full">{renderCard()}</div>
       </div>
     );
@@ -296,6 +300,9 @@ export function LoginForm({
       )}
       data-auth-shell
     >
+      <div className="absolute right-4 top-4 z-20">
+        <LocaleToggle />
+      </div>
       <div
         className={cn(
           "relative z-10 mx-auto flex w-full max-w-md flex-col items-center",
@@ -321,11 +328,11 @@ export function LoginForm({
               isRegister ? "text-2xl" : "text-3xl sm:text-[1.75rem]"
             )}
           >
-            Sub2API
+            {t("brand.name")}
           </h1>
           {!isRegister && (
             <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-600 sm:max-w-sm">
-              OpenAI-compatible gateway · API keys, usage & billing
+              {t("auth.tagline")}
             </p>
           )}
         </header>
@@ -346,7 +353,7 @@ export function LoginForm({
       >
           {mode === "login" && (
             <>
-              <h2 className="mb-6 text-lg font-semibold text-slate-900">Sign in</h2>
+              <h2 className="mb-6 text-lg font-semibold text-slate-900">{t("auth.signInTitle")}</h2>
               {postRegisterNotice && (
                 <div className="mb-5 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/95 p-4 ring-1 ring-emerald-100">
                   <p className="text-sm leading-relaxed text-emerald-900">
@@ -357,19 +364,19 @@ export function LoginForm({
                     className="text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
                     onClick={() => setPostRegisterNotice("")}
                   >
-                    Got it
+                    {t("auth.gotIt")}
                   </button>
                 </div>
               )}
               <form onSubmit={handleEmailLogin} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="login-email" className="text-xs text-slate-600">
-                    Email
+                    {t("auth.email")}
                   </Label>
                   <Input
                     id="login-email"
                     type="email"
-                    placeholder="your@email.com"
+                    placeholder={t("auth.emailPlaceholder")}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className={inputLight}
@@ -379,13 +386,13 @@ export function LoginForm({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="login-password" className="text-xs text-slate-600">
-                    Password
+                    {t("auth.password")}
                   </Label>
                   <div className="relative">
                     <Input
                       id="login-password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="Enter password"
+                      placeholder={t("auth.passwordPlaceholder")}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className={cn(inputLight, "pr-11")}
@@ -397,7 +404,7 @@ export function LoginForm({
                       tabIndex={-1}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                       onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
                     >
                       {showPassword ? (
                         <EyeOff className="size-4" />
@@ -411,10 +418,10 @@ export function LoginForm({
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      className="text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+                      className="text-xs font-medium text-teal-600 hover:text-teal-700 hover:underline"
                       onClick={() => switchMode("forgot")}
                     >
-                      Forgot password?
+                      {t("auth.forgotPassword")}
                     </button>
                   </div>
                 )}
@@ -434,19 +441,19 @@ export function LoginForm({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="mt-2 flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="mt-2 flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-teal-500/20 transition-[filter] hover:brightness-105 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  {isLoading ? "Signing in…" : "Sign in"}
+                  {isLoading ? t("auth.signingIn") : t("auth.signIn")}
                 </button>
               </form>
               <p className="mt-6 text-center text-sm text-slate-600">
-                No account yet?{" "}
+                {t("auth.noAccount")}{" "}
                 <button
                   type="button"
-                  className="font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                  className="font-medium text-teal-600 transition-colors hover:text-teal-700 hover:underline"
                   onClick={() => switchMode("register")}
                 >
-                  Sign up
+                  {t("auth.signUp")}
                 </button>
               </p>
             </>
@@ -454,21 +461,19 @@ export function LoginForm({
 
           {mode === "forgot" && (
             <>
-              <h2 className="mb-2 text-lg font-semibold text-slate-900">Reset password</h2>
-              <p className="mb-6 text-sm text-slate-600">
-                We will email a 6-digit code. Enter it below to set a new password.
-              </p>
+              <h2 className="mb-2 text-lg font-semibold text-slate-900">{t("auth.resetTitle")}</h2>
+              <p className="mb-6 text-sm text-slate-600">{t("auth.resetDesc")}</p>
               <form onSubmit={handleResetPassword} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="forgot-email" className="text-xs text-slate-600">
-                    Email
+                    {t("auth.email")}
                   </Label>
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
                     <Input
                       id="forgot-email"
                       type="email"
-                      placeholder="your@email.com"
+                      placeholder={t("auth.emailPlaceholder")}
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
                       className={cn(inputLight, "pl-10")}
@@ -479,7 +484,7 @@ export function LoginForm({
                 </div>
                 <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 p-3">
                   <Label htmlFor="reset-code" className="text-xs text-slate-600">
-                    EmailVerification code
+                    {t("auth.verificationCode")}
                   </Label>
                   <div className="flex gap-2">
                     <Input
@@ -487,7 +492,7 @@ export function LoginForm({
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
-                      placeholder="6 digits"
+                      placeholder={t("auth.sixDigits")}
                       maxLength={6}
                       value={resetVerificationCode}
                       onChange={(e) =>
@@ -505,23 +510,23 @@ export function LoginForm({
                       disabled={resetSendCooldown > 0}
                       onClick={handleSendResetCode}
                     >
-                      {resetSendCooldown > 0 ? `${resetSendCooldown}s` : "Send code"}
+                      {resetSendCooldown > 0
+                        ? t("auth.sendCodeCooldown", { seconds: resetSendCooldown })
+                        : t("auth.sendCode")}
                     </Button>
                   </div>
-                  <p className="text-[11px] leading-relaxed text-slate-500">
-                    Enter your email, send the code, then enter the 6 digits from the email.
-                  </p>
+                  <p className="text-[11px] leading-relaxed text-slate-500">{t("auth.resetHint")}</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="reset-new-pw" className="text-xs text-slate-600">
-                    New password
+                    {t("auth.newPassword")}
                   </Label>
                   <div className="relative">
                     <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
                     <Input
                       id="reset-new-pw"
                       type={showResetNewPassword ? "text" : "password"}
-                      placeholder="At least 6 characters"
+                      placeholder={t("auth.atLeast6")}
                       value={resetNewPassword}
                       onChange={(e) => setResetNewPassword(e.target.value)}
                       className={cn(inputLight, "pl-10 pr-11")}
@@ -534,7 +539,9 @@ export function LoginForm({
                       tabIndex={-1}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                       onClick={() => setShowResetNewPassword((v) => !v)}
-                      aria-label={showResetNewPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showResetNewPassword ? t("auth.hidePassword") : t("auth.showPassword")
+                      }
                     >
                       {showResetNewPassword ? (
                         <EyeOff className="size-4" />
@@ -546,14 +553,14 @@ export function LoginForm({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="reset-confirm-pw" className="text-xs text-slate-600">
-                    Confirm new password
+                    {t("auth.confirmNewPassword")}
                   </Label>
                   <div className="relative">
                     <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
                     <Input
                       id="reset-confirm-pw"
                       type={showResetConfirmPassword ? "text" : "password"}
-                      placeholder="Re-enter"
+                      placeholder={t("auth.confirmPlaceholder")}
                       value={resetConfirmPassword}
                       onChange={(e) => setResetConfirmPassword(e.target.value)}
                       className={cn(inputLight, "pl-10 pr-11")}
@@ -566,7 +573,9 @@ export function LoginForm({
                       tabIndex={-1}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                       onClick={() => setShowResetConfirmPassword((v) => !v)}
-                      aria-label={showResetConfirmPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showResetConfirmPassword ? t("auth.hidePassword") : t("auth.showPassword")
+                      }
                     >
                       {showResetConfirmPassword ? (
                         <EyeOff className="size-4" />
@@ -592,18 +601,18 @@ export function LoginForm({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-[filter,transform] hover:brightness-105 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-sm font-semibold text-white shadow-lg shadow-teal-500/20 transition-[filter] hover:brightness-105 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  {isLoading ? "Submitting…" : "Reset password"}
+                  {isLoading ? t("auth.submitting") : t("auth.resetPassword")}
                 </button>
               </form>
               <p className="mt-6 text-center text-sm text-slate-600">
                 <button
                   type="button"
-                  className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+                  className="font-medium text-teal-600 hover:text-teal-700 hover:underline"
                   onClick={() => switchMode("login")}
                 >
-                  Back to sign in
+                  {t("auth.backToSignIn")}
                 </button>
               </p>
             </>
@@ -612,20 +621,20 @@ export function LoginForm({
           {mode === "register" && (
             <>
               <h2 className="mb-4 text-center text-lg font-semibold tracking-tight text-slate-900">
-                Create account
+                {t("auth.createAccount")}
               </h2>
               <form onSubmit={handleRegister} className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2 space-y-1">
                     <Label htmlFor="reg-email" className="text-[11px] font-medium text-slate-500">
-                      Email
+                      {t("auth.email")}
                     </Label>
                     <div className="relative">
                       <Mail className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
                       <Input
                         id="reg-email"
                         type="email"
-                        placeholder="your@email.com"
+                        placeholder={t("auth.emailPlaceholder")}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className={cn(inputCompact, "pl-9")}
@@ -636,13 +645,13 @@ export function LoginForm({
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="reg-password" className="text-[11px] font-medium text-slate-500">
-                      Password
+                      {t("auth.password")}
                     </Label>
                     <div className="relative">
                       <Input
                         id="reg-password"
                         type={showRegisterPassword ? "text" : "password"}
-                        placeholder="At least 6 characters"
+                        placeholder={t("auth.atLeast6")}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className={cn(inputCompact, "pr-9")}
@@ -654,7 +663,9 @@ export function LoginForm({
                         tabIndex={-1}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                         onClick={() => setShowRegisterPassword((v) => !v)}
-                        aria-label={showRegisterPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showRegisterPassword ? t("auth.hidePassword") : t("auth.showPassword")
+                        }
                       >
                         {showRegisterPassword ? (
                           <EyeOff className="size-3.5" />
@@ -666,12 +677,12 @@ export function LoginForm({
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="reg-confirm" className="text-[11px] font-medium text-slate-500">
-                      Confirm password
+                      {t("auth.confirmPassword")}
                     </Label>
                     <Input
                       id="reg-confirm"
                       type="password"
-                      placeholder="Re-enter"
+                      placeholder={t("auth.confirmPlaceholder")}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       className={inputCompact}
@@ -686,7 +697,7 @@ export function LoginForm({
                         type="text"
                         inputMode="numeric"
                         autoComplete="one-time-code"
-                        placeholder="Verification code"
+                        placeholder={t("auth.verificationCodePlaceholder")}
                         maxLength={6}
                         value={verificationCode}
                         onChange={(e) =>
@@ -701,7 +712,9 @@ export function LoginForm({
                         disabled={sendCooldown > 0 || isLoading}
                         onClick={handleSendRegisterCode}
                       >
-                        {sendCooldown > 0 ? `Resend in ${sendCooldown}s` : "Send code"}
+                        {sendCooldown > 0
+                          ? t("auth.resendIn", { seconds: sendCooldown })
+                          : t("auth.sendCode")}
                       </Button>
                     </div>
                   )}
@@ -724,17 +737,17 @@ export function LoginForm({
                     onChange={(e) => setTermsAccepted(e.target.checked)}
                   />
                   <span>
-                    I have read and agree to the {" "}
+                    {t("auth.termsPrefix")}{" "}
                     <Link
                       href="/terms"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-medium text-emerald-700 underline hover:text-emerald-800"
+                      className="font-medium text-teal-700 underline hover:text-teal-800"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      User Agreement & Privacy Notice
-                    </Link>
-                    (version {termsVersion})
+                      {t("auth.termsLink")}
+                    </Link>{" "}
+                    {t("auth.termsVersion", { version: termsVersion })}
                   </span>
                 </label>
                 <button
@@ -742,17 +755,17 @@ export function LoginForm({
                   disabled={isLoading || !termsAccepted}
                   className="flex h-10 w-full items-center justify-center rounded-full bg-slate-900 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {isLoading ? "Creating…" : "Sign up"}
+                  {isLoading ? t("auth.creating") : t("auth.signUp")}
                 </button>
               </form>
               <p className="mt-4 text-center text-xs text-slate-500">
-                Already have an account?{" "}
+                {t("auth.hasAccount")}{" "}
                 <button
                   type="button"
                   className="font-medium text-slate-900 hover:underline"
                   onClick={() => switchMode("login")}
                 >
-                  Sign in
+                  {t("auth.signIn")}
                 </button>
               </p>
             </>

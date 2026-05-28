@@ -1,17 +1,25 @@
-const TYPE_LABELS: Record<string, string> = {
-  topup: "Top-up",
-  admin_topup: "Admin top-up",
-  monthly_grant: "Monthly grant",
-  subscription_grant: "Subscription credit",
-  admin_adjust: "Adjustment",
-  chat_consume: "Chat usage",
-  api_consume: "API usage",
-  consume: "Usage",
-  refund: "Refund",
+const TYPE_KEYS: Record<string, string> = {
+  topup: "tx.topup",
+  admin_topup: "tx.admin_topup",
+  monthly_grant: "tx.monthly_grant",
+  subscription_grant: "tx.subscription_grant",
+  admin_adjust: "tx.admin_adjust",
+  chat_consume: "tx.chat_consume",
+  api_consume: "tx.api_consume",
+  consume: "tx.consume",
+  refund: "tx.refund",
 };
 
-export function transactionTypeLabel(type: string): string {
-  return TYPE_LABELS[type] || type;
+export function transactionTypeLabel(
+  type: string,
+  t?: (key: string) => string
+): string {
+  const key = TYPE_KEYS[type];
+  if (t && key) {
+    const label = t(key);
+    if (label !== key) return label;
+  }
+  return type;
 }
 
 export function isTopupType(type: string): boolean {

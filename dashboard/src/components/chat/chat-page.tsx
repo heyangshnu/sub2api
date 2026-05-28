@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { streamDashboardChat, type ChatMessage } from "@/lib/chat-stream";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import { apiClient } from "@/lib/api";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import {
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 const FALLBACK_MODELS = ["deepseek-chat"];
 
 export function ChatPage() {
+  const t = useT();
   const { userProfile, refreshProfile } = useAuth();
   const [models, setModels] = useState<string[]>(FALLBACK_MODELS);
   const [model, setModel] = useState(FALLBACK_MODELS[0]);
@@ -62,7 +64,7 @@ export function ChatPage() {
       const id = createSessionId();
       const fresh: ChatSession = {
         id,
-        title: "New chat",
+        title: t("chat.newChat"),
         messages: defaultMessages(),
         model: FALLBACK_MODELS[0],
         updatedAt: Date.now(),
@@ -110,7 +112,7 @@ export function ChatPage() {
     const id = createSessionId();
     const fresh: ChatSession = {
       id,
-      title: "New chat",
+      title: t("chat.newChat"),
       messages: defaultMessages(),
       model,
       updatedAt: Date.now(),
@@ -146,7 +148,7 @@ export function ChatPage() {
     if (!text || loading || !activeId) return;
     const token = apiClient.getToken();
     if (!token) {
-      setError("Not signed in");
+      setError(t("chat.notSignedIn"));
       return;
     }
     setError(null);
@@ -175,7 +177,7 @@ export function ChatPage() {
       });
       await refreshProfile();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Send failed");
+      setError(e instanceof Error ? e.message : t("chat.sendFailed"));
       setMessages((prev) => {
         const trimmed = prev.slice(0, -1);
         persist(trimmed, model, activeId);
@@ -187,7 +189,7 @@ export function ChatPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-57px)] min-h-0 w-full">
+    <div className="flex h-full min-h-0 w-full flex-1">
       <ChatSidebar
         sessions={sessions}
         activeId={activeId}
@@ -196,8 +198,8 @@ export function ChatPage() {
         onDelete={deleteChat}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col bg-white">
-        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6 md:px-10 lg:px-14">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 md:px-8 lg:px-10">
           {messages.map((m, i) => (
             <div
               key={i}
@@ -223,7 +225,7 @@ export function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        <div className="border-t border-slate-200/80 bg-white px-6 py-5 md:px-10 lg:px-14">
+        <div className="shrink-0 border-t border-slate-200/80 bg-white px-4 py-4 md:px-8 lg:px-10">
           {error && (
             <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
           )}
@@ -231,7 +233,7 @@ export function ChatPage() {
             <div className="flex w-full gap-3 rounded-2xl border border-slate-200/90 bg-[#f5f5f7] p-2.5 shadow-sm ring-1 ring-slate-100">
               <textarea
                 className="min-h-[48px] flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] text-slate-900 outline-none placeholder:text-slate-400"
-                placeholder="Message… Enter to send, Shift+Enter for newline"
+                placeholder={t("chat.messagePlaceholder")}
                 rows={1}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -249,12 +251,12 @@ export function ChatPage() {
                 onClick={() => void send()}
                 disabled={loading || !input.trim()}
               >
-                {loading ? "…" : "Send"}
+                {loading ? "…" : t("chat.send")}
               </Button>
             </div>
             <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
               <label htmlFor="chat-model" className="shrink-0 text-slate-500">
-                Model
+                {t("chat.model")}
               </label>
               <select
                 id="chat-model"

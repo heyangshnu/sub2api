@@ -543,7 +543,7 @@ func (s *MemoryStore) AggregateConsumeByDay(ctx context.Context, keyHash string,
 	cutoff := time.Now().UTC().AddDate(0, 0, -days).Truncate(24 * time.Hour)
 	byDay := make(map[string]*model.DailyUsagePoint)
 	for _, tx := range s.transactions {
-		if tx.KeyID == key.ID && tx.Type == "consume" && !tx.CreatedAt.UTC().Before(cutoff) {
+		if tx.KeyID == key.ID && isConsumeLedgerType(tx.Type) && !tx.CreatedAt.UTC().Before(cutoff) {
 			d := tx.CreatedAt.UTC().Format("2006-01-02")
 			if byDay[d] == nil {
 				byDay[d] = &model.DailyUsagePoint{Date: d}

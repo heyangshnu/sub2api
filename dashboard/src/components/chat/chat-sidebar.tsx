@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageSquarePlus, Trash2 } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { ChatSession } from "@/lib/chat-sessions";
 
@@ -13,8 +14,10 @@ type Props = {
 };
 
 export function ChatSidebar({ sessions, activeId, onNewChat, onSelect, onDelete }: Props) {
+  const t = useT();
+
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col border-r border-slate-200/80 bg-[#f5f5f7]">
+    <aside className="flex h-full min-h-0 w-[260px] shrink-0 flex-col border-r border-slate-200/80 bg-[#f5f5f7]">
       <div className="border-b border-slate-200/60 p-3">
         <button
           type="button"
@@ -22,12 +25,12 @@ export function ChatSidebar({ sessions, activeId, onNewChat, onSelect, onDelete 
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8F4FF] px-4 py-2.5 text-sm font-medium text-slate-800 ring-1 ring-[#d6e8ff] transition-colors hover:bg-[#dcecff]"
         >
           <MessageSquarePlus className="size-4" />
-          New chat
+          {t("chat.newChat")}
         </button>
       </div>
       <nav className="flex-1 overflow-y-auto p-2">
         {sessions.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs text-slate-500">No chat history</p>
+          <p className="px-3 py-6 text-center text-xs text-slate-500">{t("chat.noHistory")}</p>
         ) : (
           <ul className="space-y-0.5">
             {sessions.map((s) => (
@@ -46,7 +49,7 @@ export function ChatSidebar({ sessions, activeId, onNewChat, onSelect, onDelete 
                 </button>
                 <button
                   type="button"
-                  aria-label="Delete chat"
+                  aria-label={t("chat.deleteChat")}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(s.id);

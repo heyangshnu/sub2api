@@ -2,11 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { LocaleToggle } from "@/components/locale-toggle";
+import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import Link from "next/link";
 
 function PaymentSuccessContent() {
+  const t = useT();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session_id");
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -14,10 +17,11 @@ function PaymentSuccessContent() {
 
   useEffect(() => {
     if (sessionId) {
-      checkPaymentStatus();
+      void checkPaymentStatus();
     } else {
       setStatus("error");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   const checkPaymentStatus = async () => {
@@ -47,19 +51,19 @@ function PaymentSuccessContent() {
   };
 
   return (
-    <Card className="w-full max-w-md border border-slate-200/90 bg-white/80 text-slate-900 shadow-xl shadow-slate-200/40 backdrop-blur-2xl ring-1 ring-slate-200/50">
+    <Card className="w-full max-w-md border border-slate-200/90 bg-white/80 text-slate-900 shadow-xl shadow-slate-200/40 backdrop-blur-2xl ring-1 ring-teal-500/10">
       <CardHeader className="text-center">
         {status === "loading" && (
           <>
-            <CardTitle>Processing…</CardTitle>
-            <CardDescription>Confirming payment status</CardDescription>
+            <CardTitle>{t("payment.processing")}</CardTitle>
+            <CardDescription>{t("payment.confirming")}</CardDescription>
           </>
         )}
         {status === "success" && (
           <>
-            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-teal-100">
               <svg
-                className="h-8 w-8 text-green-600"
+                className="h-8 w-8 text-teal-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -72,15 +76,17 @@ function PaymentSuccessContent() {
                 />
               </svg>
             </div>
-            <CardTitle className="text-green-600">Payment successful</CardTitle>
+            <CardTitle className="text-teal-600">{t("payment.success")}</CardTitle>
             <CardDescription>
-              {amount ? `$${amount} added to your account` : "Balance updated"}
+              {amount
+                ? t("payment.added", { amount: String(amount) })
+                : t("payment.balanceUpdated")}
             </CardDescription>
           </>
         )}
         {status === "error" && (
           <>
-            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-red-100 flex items-center justify-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
               <svg
                 className="h-8 w-8 text-red-600"
                 fill="none"
@@ -95,14 +101,14 @@ function PaymentSuccessContent() {
                 />
               </svg>
             </div>
-            <CardTitle className="text-red-600">Payment not confirmed</CardTitle>
-            <CardDescription>Contact support or try again later</CardDescription>
+            <CardTitle className="text-red-600">{t("payment.notConfirmed")}</CardTitle>
+            <CardDescription>{t("payment.contactSupport")}</CardDescription>
           </>
         )}
       </CardHeader>
       <CardContent className="flex justify-center">
         <Link href="/">
-          <Button>Back to dashboard</Button>
+          <Button className="bg-teal-600 hover:bg-teal-500">{t("payment.backDashboard")}</Button>
         </Link>
       </CardContent>
     </Card>
@@ -110,15 +116,22 @@ function PaymentSuccessContent() {
 }
 
 export default function PaymentSuccess() {
+  const t = useT();
+
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <Suspense fallback={
-        <Card className="w-full max-w-md border border-slate-200/90 bg-white/80 text-slate-900 backdrop-blur-xl ring-1 ring-slate-200/50 shadow-lg">
-          <CardHeader className="text-center">
-            <CardTitle>Loading…</CardTitle>
-          </CardHeader>
-        </Card>
-      }>
+    <div className="relative flex min-h-screen items-center justify-center p-4">
+      <div className="absolute right-4 top-4">
+        <LocaleToggle />
+      </div>
+      <Suspense
+        fallback={
+          <Card className="w-full max-w-md border border-slate-200/90 bg-white/80 text-slate-900 shadow-lg ring-1 ring-slate-200/50 backdrop-blur-xl">
+            <CardHeader className="text-center">
+              <CardTitle>{t("common.loading")}</CardTitle>
+            </CardHeader>
+          </Card>
+        }
+      >
         <PaymentSuccessContent />
       </Suspense>
     </div>

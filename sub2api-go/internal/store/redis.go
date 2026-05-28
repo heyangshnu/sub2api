@@ -702,6 +702,9 @@ const maxRequestLogsPerKey = 200
 
 // AggregateConsumeByDay sums consume-type transactions per UTC calendar day.
 func (s *RedisStore) AggregateConsumeByDay(ctx context.Context, keyHash string, days int) ([]model.DailyUsagePoint, error) {
+	if s.sqlite != nil {
+		return s.sqlite.AggregateConsumeByDay(ctx, keyHash, days)
+	}
 	if days < 1 {
 		days = 14
 	}
@@ -730,7 +733,7 @@ func (s *RedisStore) AggregateConsumeByDay(ctx context.Context, keyHash string, 
 			if err := json.Unmarshal([]byte(txJSON), &tx); err != nil {
 				continue
 			}
-			if tx.KeyID == key.ID && tx.Type == "consume" && !tx.CreatedAt.UTC().Before(cutoff) {
+			if tx.KeyID == key.ID && isConsumeLedgerType(tx.Type) && !tx.CreatedAt.UTC().Before(cutoff) {
 				all = append(all, &tx)
 			}
 		}

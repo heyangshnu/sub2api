@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useT } from "@/lib/i18n";
 import { apiClient, APIKey } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ct } from "@/lib/console-typography";
+import { CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -24,7 +26,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { formatUsd } from "@/lib/utils";
+import { RippleCard } from "@/components/ui/ripple-card";
+import { cn, formatUsd } from "@/lib/utils";
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleString("en-US", {
@@ -34,7 +37,8 @@ function formatDate(dateStr: string) {
   });
 }
 
-export function ApiKeysCard() {
+export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
+  const t = useT();
   const { apiKeys, apiKey: currentApiKey, userProfile, refreshKeys, bindUsageApiKey, requireAuth, authMode } =
     useAuth();
   const [showKey, setShowKey] = useState<string | null>(null);
@@ -57,7 +61,7 @@ export function ApiKeysCard() {
     const key = keyOverride ?? currentApiKey;
     if (!key) {
       setTestStatus("fail");
-      setTestMessage("Create or bind a key before testing connectivity");
+      setTestMessage(t("apiKeys.testNeedKey"));
       return;
     }
     setTestStatus("testing");
@@ -66,7 +70,7 @@ export function ApiKeysCard() {
     const result = await apiClient.testApiKeyConnection();
     if (result.ok) {
       setTestStatus("ok");
-      setTestMessage(`OK — ${result.modelCount} models available`);
+      setTestMessage(t("apiKeys.testOk", { count: result.modelCount }));
     } else {
       setTestStatus("fail");
       setTestMessage(result.message);
@@ -106,7 +110,7 @@ export function ApiKeysCard() {
       bindUsageApiKey(result.key);
       await refreshKeys();
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create key");
+      setCreateError(err instanceof Error ? err.message : t("apiKeys.createFailed"));
     }
     setCreateLoading(false);
     });
@@ -142,21 +146,21 @@ export function ApiKeysCard() {
       await refreshKeys();
       setSettingsOpen(false);
     } catch (err) {
-      setSettingsError(err instanceof Error ? err.message : "Failed to update settings");
+      setSettingsError(err instanceof Error ? err.message : t("apiKeys.updateFailed"));
     }
     setSettingsLoading(false);
   };
 
   const handleDeleteKey = async (keyId: string) => {
     requireAuth(async () => {
-    if (!confirm("Are you sure you want to delete this key? This action cannot be undone.")) {
+    if (!confirm(t("common.confirmDeleteKey"))) {
       return;
     }
     try {
       await apiClient.deleteKey(keyId);
       await refreshKeys();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete key");
+      alert(err instanceof Error ? err.message : t("apiKeys.deleteFailed"));
     }
     });
   };
@@ -164,10 +168,10 @@ export function ApiKeysCard() {
   // Login with API key only (no JWT): show limited view
   if (authMode !== "jwt" && currentApiKey && apiKeys.length === 0) {
     return (
-      <Card className="border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50">
+      <RippleCard rippleDelay={rippleDelay} className="text-slate-800">
         <CardHeader>
-          <CardTitle className="text-slate-900">Current API Key</CardTitle>
-          <CardDescription className="text-slate-600">You are logged in with this API Key</CardDescription>
+          <h2 className={ct.panelTitle}>{t("apiKeys.currentKey")}</h2>
+          <p className={ct.panelDesc}>{t("apiKeys.loggedInWithKey")}</p>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
@@ -179,38 +183,40 @@ export function ApiKeysCard() {
               size="sm"
               onClick={() => setShowKey(showKey === currentApiKey ? null : currentApiKey)}
             >
-              {showKey === currentApiKey ? "Hide" : "Show"}
+              {showKey === currentApiKey ? t("apiKeys.hide") : t("apiKeys.show")}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => copyToClipboard(currentApiKey)}
             >
-              {copied ? "Copied!" : "Copy"}
+              {copied ? t("apiKeys.copied") : t("apiKeys.copy")}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            To manage keys, please login with email/password.
-          </p>
+          <p className={cn(ct.panelDesc, "mt-2")}>{t("apiKeys.manageWithEmail")}</p>
         </CardContent>
-      </Card>
+      </RippleCard>
     );
   }
 
   return (
-    <Card className="border border-slate-200/90 bg-white/75 text-slate-800 shadow-lg shadow-slate-200/40 backdrop-blur-xl ring-1 ring-slate-200/50">
+    <RippleCard rippleDelay={rippleDelay} className="text-slate-800">
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle className="text-slate-900">API Keys</CardTitle>
-            <CardDescription className="text-slate-600">
-              After creating a key, top up from the header and use the OpenAI-compatible API. The key auto-binds here for usage stats.
-            </CardDescription>
+            <h2 className={ct.panelTitle}>{t("apiKeys.title")}</h2>
+            <p className={ct.panelDesc}>{t("apiKeys.desc")}</p>
             {testMessage ? (
               <p
-                className={`text-xs mt-1 ${
-                  testStatus === "ok" ? "text-emerald-600" : testStatus === "fail" ? "text-red-600" : "text-slate-500"
-                }`}
+                className={cn(
+                  ct.panelDesc,
+                  "mt-1",
+                  testStatus === "ok"
+                    ? "text-emerald-600"
+                    : testStatus === "fail"
+                      ? "text-red-600"
+                      : undefined
+                )}
               >
                 {testMessage}
               </p>
@@ -223,10 +229,10 @@ export function ApiKeysCard() {
               disabled={!currentApiKey || testStatus === "testing"}
               onClick={() => runConnectionTest()}
             >
-              {testStatus === "testing" ? "Testing…" : "Test connectivity"}
+              {testStatus === "testing" ? t("apiKeys.testing") : t("apiKeys.testConnectivity")}
             </Button>
             <Button variant="outline" size="sm" onClick={() => refreshKeys()}>
-              Refresh
+              {t("common.refresh")}
             </Button>
             <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : handleCloseCreateDialog())}>
                 <Button
@@ -235,35 +241,33 @@ export function ApiKeysCard() {
                   disabled={userProfile ? !userProfile.can_create_key : false}
                   title={
                     userProfile && !userProfile.can_create_key
-                      ? "Complete your first top-up first"
+                      ? t("apiKeys.firstTopupTitle")
                       : undefined
                   }
                   onClick={() => requireAuth(() => setCreateOpen(true))}
                 >
-                  + Create Key
+                  {t("apiKeys.createKey")}
                 </Button>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{newKey ? "Key Created" : "Create New API Key"}</DialogTitle>
+                  <DialogTitle>{newKey ? t("apiKeys.keyCreated") : t("apiKeys.createNew")}</DialogTitle>
                   <DialogDescription>
-                    {newKey
-                      ? "⚠️ Save this key NOW. It will never be shown again."
-                      : "Creating a new key requires password verification."}
+                    {newKey ? t("apiKeys.saveKeyWarn") : t("apiKeys.createVerify")}
                   </DialogDescription>
                 </DialogHeader>
 
                 {newKey ? (
                   <div className="space-y-4">
                     <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-md">
-                      <p className="text-sm font-semibold mb-2">Your new API Key:</p>
-                      <code className="text-xs block bg-background p-2 rounded break-all font-mono">
+                      <p className="text-sm font-semibold mb-2">{t("apiKeys.yourNewKey")}</p>
+                      <code className={cn(ct.tableCellMono, "block rounded bg-slate-50 p-2 break-all")}>
                         {newKey}
                       </code>
                       <Button
                         className="w-full mt-3"
                         onClick={() => copyToClipboard(newKey)}
                       >
-                        {copied ? "✓ Copied!" : "Copy to Clipboard"}
+                        {copied ? t("apiKeys.copied") : t("apiKeys.copyClipboard")}
                       </Button>
                     </div>
                     <DialogFooter className="flex-col sm:flex-row gap-2">
@@ -273,17 +277,20 @@ export function ApiKeysCard() {
                         disabled={testStatus === "testing"}
                         onClick={() => newKey && runConnectionTest(newKey)}
                       >
-                        {testStatus === "testing" ? "Testing…" : "Test key connectivity"}
+                        {testStatus === "testing" ? t("apiKeys.testing") : t("apiKeys.testKey")}
                       </Button>
-                      <Button onClick={handleCloseCreateDialog}>
-                        I&apos;ve saved the key
-                      </Button>
+                      <Button onClick={handleCloseCreateDialog}>{t("apiKeys.savedKey")}</Button>
                     </DialogFooter>
                     {testMessage && newKey ? (
                       <p
-                        className={`text-xs ${
-                          testStatus === "ok" ? "text-emerald-600" : testStatus === "fail" ? "text-red-600" : ""
-                        }`}
+                        className={cn(
+                          ct.panelDesc,
+                          testStatus === "ok"
+                            ? "text-emerald-600"
+                            : testStatus === "fail"
+                              ? "text-red-600"
+                              : undefined
+                        )}
                       >
                         {testMessage}
                       </p>
@@ -292,16 +299,16 @@ export function ApiKeysCard() {
                 ) : (
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="key-name">Key Name (optional)</Label>
+                      <Label htmlFor="key-name">{t("apiKeys.keyName")}</Label>
                       <Input
                         id="key-name"
-                        placeholder="e.g. Production, Testing"
+                        placeholder={t("apiKeys.keyNamePh")}
                         value={createName}
                         onChange={(e) => setCreateName(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="key-rate-limit">Rate Limit (requests/minute)</Label>
+                      <Label htmlFor="key-rate-limit">{t("apiKeys.rateLimit")}</Label>
                       <Input
                         id="key-rate-limit"
                         type="number"
@@ -312,7 +319,7 @@ export function ApiKeysCard() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="key-spend-limit">Spend limit USD (optional, ≤ account balance)</Label>
+                      <Label htmlFor="key-spend-limit">{t("apiKeys.spendLimit")}</Label>
                       <Input
                         id="key-spend-limit"
                         type="number"
@@ -320,19 +327,21 @@ export function ApiKeysCard() {
                         step="0.01"
                         placeholder={
                           userProfile
-                            ? `Leave empty for no limit; top-up balance $${userProfile.balance.toFixed(2)}`
-                            : "Leave empty for no limit"
+                            ? t("apiKeys.spendLimitPh", {
+                                balance: userProfile.balance.toFixed(2),
+                              })
+                            : t("apiKeys.spendLimitPhShort")
                         }
                         value={createSpendLimit}
                         onChange={(e) => setCreateSpendLimit(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="key-password">Your Password (required)</Label>
+                      <Label htmlFor="key-password">{t("apiKeys.yourPassword")}</Label>
                       <Input
                         id="key-password"
                         type="password"
-                        placeholder="Enter your account password"
+                        placeholder={t("apiKeys.passwordPh")}
                         value={createPassword}
                         onChange={(e) => setCreatePassword(e.target.value)}
                       />
@@ -345,7 +354,7 @@ export function ApiKeysCard() {
                         onClick={handleCreateKey}
                         disabled={createLoading || !createPassword}
                       >
-                        {createLoading ? "Creating..." : "Create Key"}
+                        {createLoading ? t("apiKeys.creating") : t("apiKeys.createKeyBtn")}
                       </Button>
                     </DialogFooter>
                   </div>
@@ -357,29 +366,27 @@ export function ApiKeysCard() {
       </CardHeader>
       <CardContent>
         {apiKeys.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">
-            No API Keys yet. Click &quot;Create Key&quot; to get started.
-          </p>
+          <p className="text-muted-foreground text-center py-8">{t("apiKeys.noKeys")}</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Key Prefix</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead>Rate Limit</TableHead>
-                <TableHead>IP Whitelist</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>{t("apiKeys.colName")}</TableHead>
+                <TableHead>{t("apiKeys.colPrefix")}</TableHead>
+                <TableHead>{t("apiKeys.colBalance")}</TableHead>
+                <TableHead>{t("apiKeys.colRate")}</TableHead>
+                <TableHead>{t("apiKeys.colIp")}</TableHead>
+                <TableHead>{t("apiKeys.colStatus")}</TableHead>
+                <TableHead>{t("apiKeys.colCreated")}</TableHead>
+                <TableHead>{t("apiKeys.colActions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {apiKeys.map((key: APIKey) => (
                 <TableRow key={key.id}>
-                  <TableCell className="font-medium">{key.name || "Default"}</TableCell>
+                  <TableCell className="font-medium">{key.name || t("common.default")}</TableCell>
                   <TableCell>
-                    <code className="text-xs bg-muted px-2 py-1 rounded">
+                    <code className={cn(ct.tableCellMono, "rounded bg-slate-50 px-2 py-1")}>
                       {key.key_prefix}
                     </code>
                   </TableCell>
@@ -391,8 +398,8 @@ export function ApiKeysCard() {
                   </TableCell>
                   <TableCell className="text-sm">
                     {key.ip_whitelist && key.ip_whitelist.length > 0
-                      ? `${key.ip_whitelist.length} IPs`
-                      : "Any IP"}
+                      ? t("common.ipCount", { count: key.ip_whitelist.length })
+                      : t("common.anyIp")}
                   </TableCell>
                   <TableCell>
                     <Badge variant={key.status === "active" ? "default" : "secondary"}>
@@ -405,7 +412,7 @@ export function ApiKeysCard() {
                   <TableCell>
                     <div className="flex gap-2">
                       <Button variant="ghost" size="sm" onClick={() => openSettings(key)}>
-                        Settings
+                        {t("apiKeys.settings")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -413,7 +420,7 @@ export function ApiKeysCard() {
                         className="text-red-500 hover:text-red-600"
                         onClick={() => handleDeleteKey(key.id)}
                       >
-                        Delete
+                        {t("apiKeys.delete")}
                       </Button>
                     </div>
                   </TableCell>
@@ -427,14 +434,16 @@ export function ApiKeysCard() {
         <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Key Settings</DialogTitle>
+              <DialogTitle>{t("apiKeys.keySettings")}</DialogTitle>
               <DialogDescription>
-                Configure security settings for <strong>{editingKey?.name || "this key"}</strong>
+                {t("apiKeys.keySettingsDesc", {
+                  name: editingKey?.name || t("apiKeys.title"),
+                })}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="settings-rate-limit">Rate Limit (requests/minute)</Label>
+                <Label htmlFor="settings-rate-limit">{t("apiKeys.rateLimit")}</Label>
                 <Input
                   id="settings-rate-limit"
                   type="number"
@@ -443,12 +452,10 @@ export function ApiKeysCard() {
                   value={settingsRateLimit}
                   onChange={(e) => setSettingsRateLimit(parseInt(e.target.value) || 60)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Range: 1–3600. Default: 60.
-                </p>
+                <p className={ct.panelDesc}>{t("apiKeys.rateHint")}</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="settings-ip">IP Whitelist (one per line, leave empty to allow all)</Label>
+                <Label htmlFor="settings-ip">{t("apiKeys.ipWhitelist")}</Label>
                 <textarea
                   id="settings-ip"
                   className="w-full h-24 p-2 border rounded-md text-sm font-mono"
@@ -456,19 +463,17 @@ export function ApiKeysCard() {
                   value={ipWhitelistInput}
                   onChange={(e) => setIpWhitelistInput(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Supports single IPs and CIDR (e.g. 10.0.0.0/24). Empty = allow any IP.
-                </p>
+                <p className={ct.panelDesc}>{t("apiKeys.ipHint")}</p>
               </div>
               {settingsError && (
                 <p className="text-sm text-red-500">{settingsError}</p>
               )}
               <DialogFooter>
                 <Button variant="outline" onClick={() => setSettingsOpen(false)}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button onClick={handleSaveSettings} disabled={settingsLoading}>
-                  {settingsLoading ? "Saving..." : "Save"}
+                  {settingsLoading ? t("apiKeys.saving") : t("common.save")}
                 </Button>
               </DialogFooter>
             </div>
@@ -478,7 +483,7 @@ export function ApiKeysCard() {
         {/* Show current API key if logged in with one */}
         {currentApiKey && (
           <div className="mt-4 p-4 border rounded-md bg-muted/50">
-            <p className="text-sm text-muted-foreground mb-2">Current Session API Key:</p>
+            <p className="text-sm text-muted-foreground mb-2">{t("apiKeys.sessionKey")}</p>
             <div className="flex items-center gap-2">
               <code className="text-sm flex-1 font-mono bg-background p-2 rounded">
                 {showKey === currentApiKey ? currentApiKey : `${currentApiKey.slice(0, 25)}...`}
@@ -488,19 +493,19 @@ export function ApiKeysCard() {
                 size="sm"
                 onClick={() => setShowKey(showKey === currentApiKey ? null : currentApiKey)}
               >
-                {showKey === currentApiKey ? "Hide" : "Show"}
+                {showKey === currentApiKey ? t("apiKeys.hide") : t("apiKeys.show")}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => copyToClipboard(currentApiKey)}
               >
-                {copied ? "Copied!" : "Copy"}
+                {copied ? t("apiKeys.copied") : t("apiKeys.copy")}
               </Button>
             </div>
           </div>
         )}
       </CardContent>
-    </Card>
+    </RippleCard>
   );
 }
