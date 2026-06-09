@@ -191,6 +191,18 @@ func (s *MemoryStore) SetKeySpendLimit(ctx context.Context, keyHash string, spen
 	return nil
 }
 
+func (s *MemoryStore) SetKeyAllowedModels(ctx context.Context, keyHash string, allowedModels []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key, exists := s.keys[keyHash]
+	if !exists {
+		return ErrKeyNotFound
+	}
+	key.AllowedModels = allowedModels
+	key.UpdatedAt = time.Now()
+	return nil
+}
+
 func (s *MemoryStore) ListAccountTransactions(ctx context.Context, userID string, limit, offset int) ([]*model.Transaction, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

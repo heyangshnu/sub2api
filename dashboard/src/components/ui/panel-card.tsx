@@ -9,7 +9,6 @@ type PanelCardProps = {
   description?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
-  rippleDelay?: number;
   className?: string;
   contentClassName?: string;
 };
@@ -19,12 +18,11 @@ export function PanelCard({
   description,
   action,
   children,
-  rippleDelay = 0,
   className,
   contentClassName,
 }: PanelCardProps) {
   return (
-    <RippleCard rippleDelay={rippleDelay} className={className}>
+    <RippleCard className={className}>
       <div className={cn("relative z-10 p-5 md:p-5", contentClassName)}>
         {(title || description || action) && (
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

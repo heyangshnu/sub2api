@@ -38,7 +38,14 @@ func NewProviderService(cfg *config.Config) *ProviderService {
 
 // RouteRequest routes a chat completion request to the appropriate provider
 func (s *ProviderService) RouteRequest(ctx context.Context, req *model.ChatCompletionRequest) (*http.Response, error) {
-	provider := s.findProviderForModel(req.Model)
+	_, upstream, ok := model.ResolvePlatformModel(req.Model)
+	if !ok {
+		upstream = req.Model
+	}
+	routeReq := *req
+	routeReq.Model = upstream
+
+	provider := s.findProviderForModel(upstream)
 	if provider == nil {
 		return nil, ErrNoProviderForModel
 	}
@@ -46,12 +53,68 @@ func (s *ProviderService) RouteRequest(ctx context.Context, req *model.ChatCompl
 	// Convert request to provider-specific format
 	switch provider.Name {
 	case "anthropic":
-		return s.callAnthropic(ctx, provider, req)
-	case "openai", "deepseek":
-		return s.callOpenAI(ctx, provider, req)
+		return s.callAnthropic(ctx, provider, &routeReq)
+	case "openai", "deepseek", "google":
+		return s.callOpenAI(ctx, provider, &routeReq)
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", provider.Name)
 	}
+}
+
+// GenerateImage calls OpenAI-compatible images API and returns the first image URL.
+func (s *ProviderService) GenerateImage(ctx context.Context, platformModelID, prompt string) (string, error) {
+	_, upstream, ok := model.ResolvePlatformModel(platformModelID)
+	if !ok {
+		upstream = platformModelID
+	}
+	provider := s.findProviderForModel(upstream)
+	if provider == nil {
+		return "", ErrNoProviderForModel
+	}
+
+	body, err := json.Marshal(map[string]interface{}{
+		"model":  upstream,
+		"prompt": prompt,
+		"n":      1,
+		"size":   "1024x1024",
+	})
+	if err != nil {
+		return "", err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", provider.BaseURL+"/v1/images/generations", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+provider.APIKey)
+
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%w: status=%d body=%s", ErrUpstreamError, resp.StatusCode, string(raw))
+	}
+
+	var parsed struct {
+		Data []struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", err
+	}
+	if len(parsed.Data) == 0 || parsed.Data[0].URL == "" {
+		return "", fmt.Errorf("%w: empty image response", ErrUpstreamError)
+	}
+	return parsed.Data[0].URL, nil
 }
 
 func (s *ProviderService) findProviderForModel(modelName string) *config.ProviderConfig {

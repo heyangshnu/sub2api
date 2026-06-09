@@ -19,41 +19,45 @@ func NewBillingService(s store.Store) *BillingService {
 
 // EstimateCost estimates the cost for a request based on input tokens
 func (s *BillingService) EstimateCost(modelName string, estimatedInputTokens int) float64 {
-	pricing, ok := model.DefaultPricing[modelName]
-	if !ok {
-		// Default pricing if model not found
-		pricing = model.ModelPricing{
-			InputPricePerK:  0.003,
-			OutputPricePerK: 0.015,
-		}
+	pricing := lookupPricing(modelName)
+	if pricing.FlatPriceUSD > 0 {
+		return pricing.FlatPriceUSD
 	}
-	
+
 	// Estimate: assume output will be similar to input
 	estimatedOutputTokens := estimatedInputTokens
 	if estimatedOutputTokens < 100 {
 		estimatedOutputTokens = 100 // Minimum estimate
 	}
-	
+
 	inputCost := float64(estimatedInputTokens) / 1000.0 * pricing.InputPricePerK
 	outputCost := float64(estimatedOutputTokens) / 1000.0 * pricing.OutputPricePerK
-	
+
 	return inputCost + outputCost
 }
 
 // CalculateActualCost calculates the actual cost based on usage
 func (s *BillingService) CalculateActualCost(modelName string, usage model.Usage) float64 {
-	pricing, ok := model.DefaultPricing[modelName]
-	if !ok {
-		pricing = model.ModelPricing{
-			InputPricePerK:  0.003,
-			OutputPricePerK: 0.015,
-		}
+	pricing := lookupPricing(modelName)
+	if pricing.FlatPriceUSD > 0 {
+		return pricing.FlatPriceUSD
 	}
-	
+
 	inputCost := float64(usage.PromptTokens) / 1000.0 * pricing.InputPricePerK
 	outputCost := float64(usage.CompletionTokens) / 1000.0 * pricing.OutputPricePerK
-	
+
 	return inputCost + outputCost
+}
+
+func lookupPricing(modelName string) model.ModelPricing {
+	key := model.PricingKey(modelName)
+	if pricing, ok := model.DefaultPricing[key]; ok {
+		return pricing
+	}
+	return model.ModelPricing{
+		InputPricePerK:  0.003,
+		OutputPricePerK: 0.015,
+	}
 }
 
 // PreDeduct attempts to pre-deduct estimated cost

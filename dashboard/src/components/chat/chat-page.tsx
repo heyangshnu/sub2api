@@ -17,13 +17,20 @@ import {
   upsertSession,
   type ChatSession,
 } from "@/lib/chat-sessions";
+import {
+  FALLBACK_PLATFORM_MODELS,
+  modelLabel,
+  resolveSelectableModels,
+  type PlatformModel,
+} from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
 
-const FALLBACK_MODELS = ["deepseek-chat"];
+const FALLBACK_MODELS = ["gpt"];
 
 export function ChatPage() {
   const t = useT();
   const { userProfile, refreshProfile } = useAuth();
+  const [modelCatalog, setModelCatalog] = useState<PlatformModel[]>(FALLBACK_PLATFORM_MODELS);
   const [models, setModels] = useState<string[]>(FALLBACK_MODELS);
   const [model, setModel] = useState(FALLBACK_MODELS[0]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -43,15 +50,23 @@ export function ChatPage() {
     apiClient
       .getAuthConfig()
       .then((cfg) => {
-        const list =
-          cfg.chat_enabled_models && cfg.chat_enabled_models.length > 0
-            ? cfg.chat_enabled_models
-            : FALLBACK_MODELS;
+        const catalog =
+          cfg.model_catalog && cfg.model_catalog.length > 0
+            ? cfg.model_catalog
+            : FALLBACK_PLATFORM_MODELS;
+        setModelCatalog(catalog);
+        const selectable = resolveSelectableModels(
+          catalog,
+          cfg.chat_enabled_models,
+          userProfile,
+          cfg.subscriptions_enabled
+        );
+        const list = selectable.map((m) => m.id);
         setModels(list);
-        setModel((m) => (list.includes(m) ? m : list[0]));
+        setModel((m) => (list.includes(m) ? m : list[0] ?? "gpt"));
       })
       .catch(() => {});
-  }, []);
+  }, [userProfile]);
 
   useEffect(() => {
     const loaded = loadSessions();
@@ -279,7 +294,7 @@ export function ChatPage() {
               >
                 {models.map((m) => (
                   <option key={m} value={m}>
-                    {m}
+                    {modelLabel(modelCatalog, m)}
                   </option>
                 ))}
               </select>

@@ -73,10 +73,8 @@ func (s *RedisStore) CheckSubscriptionModel(ctx context.Context, userID, modelNa
 		return ErrSubscriptionRequired
 	}
 	modelName = strings.TrimSpace(modelName)
-	for _, m := range allowed {
-		if m == modelName {
-			return nil
-		}
+	if model.ModelInAllowlist(modelName, allowed) {
+		return nil
 	}
 	return ErrSubscriptionModelNotAllowed
 }

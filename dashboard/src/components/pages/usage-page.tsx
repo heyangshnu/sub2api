@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { useCardBounceDelay } from "@/lib/use-card-bounce-delay";
 import { useT } from "@/lib/i18n";
 import {
   apiClient,
@@ -105,8 +104,6 @@ export function UsagePage() {
   const [dailyLoading, setDailyLoading] = useState(false);
   const [modelLoading, setModelLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-
-  const rippleBase = useCardBounceDelay();
 
   useEffect(() => {
     if (isAuthenticated) void refreshProfile();
@@ -239,21 +236,20 @@ export function UsagePage() {
     return (
       <div className={cn(consolePageClass, "space-y-6")}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatTile label={t("usage.balanceUsd")} value={dash} rippleDelay={rippleBase} />
-          <StatTile label={t("usage.todaySpend")} value={dash} rippleDelay={rippleBase} />
-          <StatTile label={t("usage.monthSpend")} value={dash} rippleDelay={rippleBase} />
-          <StatTile label={t("usage.totalSpent")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.balanceUsd")} value={dash} />
+          <StatTile label={t("usage.todaySpend")} value={dash} />
+          <StatTile label={t("usage.monthSpend")} value={dash} />
+          <StatTile label={t("usage.totalSpent")} value={dash} />
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatTile label={t("usage.todayRequests")} value={dash} rippleDelay={rippleBase} />
-          <StatTile label={t("usage.todayTokens")} value={dash} rippleDelay={rippleBase} />
-          <StatTile label={t("usage.totalRequests")} value={dash} rippleDelay={rippleBase} />
-          <StatTile label={t("usage.totalTokens")} value={dash} rippleDelay={rippleBase} />
+          <StatTile label={t("usage.todayRequests")} value={dash} />
+          <StatTile label={t("usage.todayTokens")} value={dash} />
+          <StatTile label={t("usage.totalRequests")} value={dash} />
+          <StatTile label={t("usage.totalTokens")} value={dash} />
         </div>
         <PanelCard
           title={t("usage.last14")}
           description={t("usage.guestChartDesc")}
-          rippleDelay={rippleBase}
         >
           <div className={cn("flex h-40 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/80", ct.empty)}>
             {t("usage.sampleChart")}
@@ -292,22 +288,18 @@ export function UsagePage() {
         <StatTile
           label={t("usage.balanceUsd")}
           value={formatUsd(userProfile?.balance, 2)}
-          rippleDelay={rippleBase}
         />
         <StatTile
           label={t("usage.todaySpend")}
           value={stat(summaryLoading, () => formatUsd(summary?.today_spend_usd ?? 0, 2))}
-          rippleDelay={rippleBase}
         />
         <StatTile
           label={t("usage.monthSpend")}
           value={stat(summaryLoading, () => formatUsd(summary?.month_spend_usd ?? 0, 2))}
-          rippleDelay={rippleBase}
         />
         <StatTile
           label={t("usage.totalSpent")}
           value={stat(summaryLoading, () => formatUsd(summary?.total_spend_usd ?? 0, 2))}
-          rippleDelay={rippleBase}
         />
       </div>
 
@@ -315,27 +307,23 @@ export function UsagePage() {
         <StatTile
           label={t("usage.todayRequests")}
           value={stat(summaryLoading, () => String(summary?.today_request_count ?? 0))}
-          rippleDelay={rippleBase}
         />
         <StatTile
           label={t("usage.todayTokens")}
           value={stat(summaryLoading, () => todayTokenTotal.toLocaleString())}
-          rippleDelay={rippleBase}
         />
         <StatTile
           label={t("usage.totalRequests")}
           value={stat(summaryLoading, () => String(summary?.total_request_count ?? 0))}
-          rippleDelay={rippleBase}
         />
         <StatTile
           label={t("usage.totalTokens")}
           value={stat(summaryLoading, () => totalTokenTotal.toLocaleString())}
-          rippleDelay={rippleBase}
         />
       </div>
 
       {userProfile?.subscription?.active && (
-        <PanelCard rippleDelay={rippleBase} contentClassName="!py-4">
+        <PanelCard contentClassName="!py-4">
           <p className={ct.alert}>
             {t("usage.planRemaining", {
               plan: userProfile.subscription.plan_id,
@@ -349,7 +337,6 @@ export function UsagePage() {
         title={t("usage.accountTrend")}
         description={t("usage.ledgerNote")}
         action={<DayToggle chartDays={chartDays} setChartDays={setChartDays} />}
-        rippleDelay={rippleBase}
       >
         {dailyLoading ? (
           <Skeleton className="h-44 w-full rounded-xl" />
@@ -378,7 +365,6 @@ export function UsagePage() {
               ))}
             </select>
           }
-          rippleDelay={rippleBase}
         >
           {keyPoints.length === 0 ? (
             <p className={cn("py-12 text-center", ct.empty)}>{t("usage.noUsage")}</p>
@@ -391,7 +377,6 @@ export function UsagePage() {
       <PanelCard
         title={t("usage.byModel")}
         description={t("usage.byModelDays", { days: 30 })}
-        rippleDelay={rippleBase}
       >
         {modelLoading ? (
           <Skeleton className="h-24 w-full rounded-xl" />

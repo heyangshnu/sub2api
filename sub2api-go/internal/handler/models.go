@@ -3,44 +3,41 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 	"sub2api-go/internal/config"
+	"sub2api-go/internal/model"
 )
 
-// ModelsFromConfig builds OpenAI-compatible model list from configured providers.
+// ModelsFromConfig builds OpenAI-compatible model list from platform catalog + providers.
 func ModelsFromConfig(cfg *config.Config) []gin.H {
 	if cfg == nil {
 		return defaultModelList()
 	}
-	seen := make(map[string]bool)
-	var out []gin.H
-	for _, p := range cfg.Providers {
-		ownedBy := p.Name
-		if ownedBy == "" {
-			ownedBy = "system"
-		}
-		for _, m := range p.Models {
-			if m == "" || seen[m] {
-				continue
-			}
-			seen[m] = true
-			out = append(out, gin.H{
-				"id":       m,
-				"object":   "model",
-				"owned_by": ownedBy,
-			})
-		}
-	}
-	if len(out) == 0 {
+	catalog := cfg.AvailablePlatformModels()
+	if len(catalog) == 0 {
 		return defaultModelList()
+	}
+	out := make([]gin.H, 0, len(catalog))
+	for _, pm := range catalog {
+		out = append(out, gin.H{
+			"id":       pm.ID,
+			"object":   "model",
+			"owned_by": pm.Provider,
+			"kind":     pm.Kind,
+			"label":    pm.Label,
+		})
 	}
 	return out
 }
 
 func defaultModelList() []gin.H {
-	return []gin.H{
-		{"id": "claude-3-5-sonnet-20241022", "object": "model", "owned_by": "anthropic"},
-		{"id": "claude-3-5-haiku-20241022", "object": "model", "owned_by": "anthropic"},
-		{"id": "gpt-4o", "object": "model", "owned_by": "openai"},
-		{"id": "gpt-4o-mini", "object": "model", "owned_by": "openai"},
-		{"id": "deepseek-chat", "object": "model", "owned_by": "deepseek"},
+	out := make([]gin.H, 0, len(model.PlatformCatalog()))
+	for _, pm := range model.PlatformCatalog() {
+		out = append(out, gin.H{
+			"id":       pm.ID,
+			"object":   "model",
+			"owned_by": pm.Provider,
+			"kind":     pm.Kind,
+			"label":    pm.Label,
+		})
 	}
+	return out
 }

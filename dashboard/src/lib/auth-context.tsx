@@ -10,7 +10,6 @@ import {
   ReactNode,
 } from "react";
 import { apiClient, User, UserProfile, APIKey } from "@/lib/api";
-import { clearSloganSession, flagSloganAfterLogin, hasSloganPlayed } from "@/lib/brand";
 
 export type AuthDialogTab = "login" | "register";
 
@@ -44,10 +43,6 @@ interface AuthContextType {
   closeAuthDialog: () => void;
   requireAuth: (action: () => void | Promise<void>, tab?: AuthDialogTab) => void;
   onAuthSuccess: () => void;
-  /** Bumps on each login to start slogan hero in console shell */
-  sloganPlayId: number;
-  sloganPinned: boolean;
-  setSloganPinned: (pinned: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -67,13 +62,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authDialogTab, setAuthDialogTab] = useState<AuthDialogTab>("login");
   const pendingActionRef = useRef<(() => void | Promise<void>) | null>(null);
-  const [sloganPlayId, setSloganPlayId] = useState(0);
-  const [sloganPinned, setSloganPinned] = useState(false);
-
-  const triggerSloganOnLogin = useCallback(() => {
-    flagSloganAfterLogin();
-    setSloganPlayId((n) => n + 1);
-  }, []);
 
   const refreshProfile = useCallback(async () => {
     if (!apiClient.getToken()) return;
@@ -141,9 +129,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setIsLoading(false);
-      if (apiClient.getToken() && hasSloganPlayed()) {
-        setSloganPinned(true);
-      }
     };
 
     void init();
@@ -166,7 +151,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthMode("jwt");
       await refreshProfile();
       await refreshKeys();
-      triggerSloganOnLogin();
       return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Login failed" };
@@ -195,9 +179,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    clearSloganSession();
-    setSloganPinned(false);
-    setSloganPlayId(0);
     localStorage.removeItem(API_KEY_STORAGE_KEY);
     localStorage.removeItem(JWT_TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
@@ -265,9 +246,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         closeAuthDialog,
         requireAuth,
         onAuthSuccess,
-        sloganPlayId,
-        sloganPinned,
-        setSloganPinned,
       }}
     >
       {children}

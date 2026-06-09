@@ -55,10 +55,8 @@ func (s *MemoryStore) CheckSubscriptionModel(ctx context.Context, userID, modelN
 		return ErrSubscriptionRequired
 	}
 	modelName = strings.TrimSpace(modelName)
-	for _, m := range allowed {
-		if m == modelName {
-			return nil
-		}
+	if model.ModelInAllowlist(modelName, allowed) {
+		return nil
 	}
 	return ErrSubscriptionModelNotAllowed
 }

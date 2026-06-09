@@ -98,6 +98,12 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	if !model.KeyAllowsModel(apiKey, req.Model) {
+		h.appendChatAudit(c, apiKey, req.Model, req.Stream, "model_denied", startAt, reqID)
+		c.JSON(http.StatusForbidden, model.NewAPIError("invalid_request_error", "Model not allowed for this API key"))
+		return
+	}
+
 	if err := h.subService.EnforceBeforeRequest(c.Request.Context(), apiKey.UserID, req.Model, estimatedCost); err != nil {
 		h.appendChatAudit(c, apiKey, req.Model, req.Stream, "subscription_denied", startAt, reqID)
 		if h.respondSubscriptionError(c, err) {
@@ -118,6 +124,11 @@ func (h *ChatHandler) ChatCompletions(c *gin.Context) {
 			h.appendChatAudit(c, apiKey, req.Model, req.Stream, "billing_error", startAt, reqID)
 			c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to process billing"))
 		}
+		return
+	}
+
+	if model.ModelKindOf(req.Model) == model.ModelKindImage {
+		h.handleImageForAPI(c, &req, apiKey, estimatedCost, reqID, startAt)
 		return
 	}
 
@@ -182,18 +193,9 @@ func (h *ChatHandler) DashboardChatCompletions(c *gin.Context) {
 				return
 			}
 		}
-	} else if h.cfg != nil && len(h.cfg.ChatEnabledModels) > 0 {
-		allowed := false
-		for _, m := range h.cfg.ChatEnabledModels {
-			if m == req.Model {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Model not enabled for dashboard chat"))
-			return
-		}
+	} else if !h.dashboardModelAllowed(req.Model) {
+		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Model not enabled for dashboard chat"))
+		return
 	}
 
 	grantUSD := 0.0
@@ -206,6 +208,11 @@ func (h *ChatHandler) DashboardChatCompletions(c *gin.Context) {
 		} else {
 			c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to process billing"))
 		}
+		return
+	}
+
+	if model.ModelKindOf(req.Model) == model.ModelKindImage {
+		h.handleImageForDashboard(c, &req, uid, estimatedCost, reqID)
 		return
 	}
 

@@ -186,6 +186,7 @@ type APIKey struct {
 	SpendLimit   *float64  `json:"spend_limit,omitempty" db:"spend_limit"`
 	SpentTotal   float64   `json:"spent_total" db:"spent_total"`
 	IPWhitelist  []string  `json:"ip_whitelist,omitempty" db:"-"` // IP 白名单，空数组表示不限制
+	AllowedModels []string `json:"allowed_models,omitempty" db:"-"` // 新建 Key 仅 1 个；空 = 兼容旧 Key（全部可用）
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 	LastUsedAt   *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
@@ -290,23 +291,34 @@ type ModelPricing struct {
 	Provider        string  `json:"provider"`
 	InputPricePerK  float64 `json:"input_price_per_k"`  // USD per 1K tokens
 	OutputPricePerK float64 `json:"output_price_per_k"` // USD per 1K tokens
+	FlatPriceUSD    float64 `json:"flat_price_usd,omitempty"` // per request (e.g. image)
 }
 
-// Default pricing table (USD per 1K tokens)
+// Default pricing table (USD per 1K tokens, or flat per request)
 var DefaultPricing = map[string]ModelPricing{
+	// Platform ids (preferred for billing)
+	"deepseek": {Model: "deepseek", Provider: "deepseek", InputPricePerK: 0.00014, OutputPricePerK: 0.00028},
+	"gpt":      {Model: "gpt", Provider: "openai", InputPricePerK: 0.00015, OutputPricePerK: 0.0006},
+	"gemini": {Model: "gemini", Provider: "google", InputPricePerK: 0.000075, OutputPricePerK: 0.0003},
+	"claude": {Model: "claude", Provider: "anthropic", InputPricePerK: 0.001, OutputPricePerK: 0.005},
+	"image":  {Model: "image", Provider: "openai", FlatPriceUSD: 0.04},
+	// Upstream ids
 	"claude-3-5-sonnet-20241022": {Model: "claude-3-5-sonnet-20241022", Provider: "anthropic", InputPricePerK: 0.003, OutputPricePerK: 0.015},
 	"claude-3-5-haiku-20241022":  {Model: "claude-3-5-haiku-20241022", Provider: "anthropic", InputPricePerK: 0.001, OutputPricePerK: 0.005},
 	"claude-3-opus-20240229":     {Model: "claude-3-opus-20240229", Provider: "anthropic", InputPricePerK: 0.015, OutputPricePerK: 0.075},
 	"gpt-4o":                     {Model: "gpt-4o", Provider: "openai", InputPricePerK: 0.005, OutputPricePerK: 0.015},
 	"gpt-4o-mini":                {Model: "gpt-4o-mini", Provider: "openai", InputPricePerK: 0.00015, OutputPricePerK: 0.0006},
 	"gpt-4-turbo":                {Model: "gpt-4-turbo", Provider: "openai", InputPricePerK: 0.01, OutputPricePerK: 0.03},
+	"dall-e-3":                   {Model: "dall-e-3", Provider: "openai", FlatPriceUSD: 0.04},
+	"gemini-1.5-flash":           {Model: "gemini-1.5-flash", Provider: "google", InputPricePerK: 0.000075, OutputPricePerK: 0.0003},
+	"gemini-1.5-pro":             {Model: "gemini-1.5-pro", Provider: "google", InputPricePerK: 0.00125, OutputPricePerK: 0.005},
 	"deepseek-chat":              {Model: "deepseek-chat", Provider: "deepseek", InputPricePerK: 0.00014, OutputPricePerK: 0.00028},
 	"deepseek-coder":             {Model: "deepseek-coder", Provider: "deepseek", InputPricePerK: 0.00014, OutputPricePerK: 0.00028},
 }
 
 // HasDefaultPricing reports whether the model has an explicit row in DefaultPricing (strict billing catalog).
 func HasDefaultPricing(modelName string) bool {
-	_, ok := DefaultPricing[modelName]
+	_, ok := DefaultPricing[PricingKey(modelName)]
 	return ok
 }
 
@@ -333,17 +345,19 @@ type TopupRequest struct {
 
 // CreateUserKeyRequest 用户从 Dashboard 创建 Key 的请求（需二次验证密码）
 type CreateUserKeyRequest struct {
-	Name       string   `json:"name,omitempty"`
-	Password   string   `json:"password" binding:"required"` // 二次验证
-	RateLimit  int      `json:"rate_limit,omitempty"`
-	SpendLimit *float64 `json:"spend_limit,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	Password      string   `json:"password" binding:"required"` // 二次验证
+	RateLimit     int      `json:"rate_limit,omitempty"`
+	SpendLimit    *float64 `json:"spend_limit,omitempty"`
+	AllowedModels []string `json:"allowed_models" binding:"required,len=1"` // 必须且只能绑定 1 个模型
 }
 
 // UpdateKeySettingsRequest 更新 Key 设置（IP 白名单、频次）
 type UpdateKeySettingsRequest struct {
-	IPWhitelist []string `json:"ip_whitelist"`
-	RateLimit   int      `json:"rate_limit,omitempty"`
-	SpendLimit  *float64 `json:"spend_limit,omitempty"` // nil = clear limit; omit = unchanged
+	IPWhitelist   []string `json:"ip_whitelist"`
+	RateLimit     int      `json:"rate_limit,omitempty"`
+	SpendLimit    *float64 `json:"spend_limit,omitempty"` // nil = clear limit; omit = unchanged
+	AllowedModels []string `json:"allowed_models,omitempty"`
 }
 
 type AccountCheckoutRequest struct {

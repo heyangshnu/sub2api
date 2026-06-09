@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"sub2api-go/internal/model"
 )
 
 type Config struct {
@@ -120,7 +122,7 @@ func Load() *Config {
 		SubscriptionPlans:         subPlans,
 	}
 	if len(cfg.ChatEnabledModels) == 0 {
-		cfg.ChatEnabledModels = []string{"deepseek-chat"}
+		cfg.ChatEnabledModels = append([]string(nil), model.DefaultPlatformModelIDs...)
 	}
 
 	return cfg
@@ -180,7 +182,7 @@ func loadProviders() []ProviderConfig {
 		})
 	}
 
-	// OpenAI
+	// OpenAI (GPT + Image)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 		providers = append(providers, ProviderConfig{
 			Name:    "openai",
@@ -190,8 +192,24 @@ func loadProviders() []ProviderConfig {
 				"gpt-4o",
 				"gpt-4o-mini",
 				"gpt-4-turbo",
+				"dall-e-3",
 			},
 			Priority: 2,
+		})
+	}
+
+	// Google Gemini (OpenAI-compatible endpoint)
+	if key := os.Getenv("GOOGLE_API_KEY"); key != "" {
+		providers = append(providers, ProviderConfig{
+			Name:    "google",
+			APIKey:  key,
+			BaseURL: getEnv("GOOGLE_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
+			Models: []string{
+				"gemini-1.5-flash",
+				"gemini-1.5-pro",
+				"gemini-2.0-flash",
+			},
+			Priority: 4,
 		})
 	}
 

@@ -63,9 +63,13 @@ func NewAuthHandler(
 // AuthConfig handles GET /auth/config — public flags for the dashboard (no auth).
 func (h *AuthHandler) AuthConfig(c *gin.Context) {
 	inviteRequired := strings.TrimSpace(h.inviteCode) != ""
-	models := []string{"deepseek-chat"}
+	models := append([]string(nil), model.DefaultPlatformModelIDs...)
 	if h.cfg != nil && len(h.cfg.ChatEnabledModels) > 0 {
 		models = h.cfg.ChatEnabledModels
+	}
+	catalog := model.PlatformCatalog()
+	if h.cfg != nil {
+		catalog = h.cfg.AvailablePlatformModels()
 	}
 	out := gin.H{
 		"email_verify_enabled": h.emailVerifyEnabled,
@@ -73,9 +77,12 @@ func (h *AuthHandler) AuthConfig(c *gin.Context) {
 		"terms_version":        legal.CurrentTermsVersion(),
 		"terms_required":       true,
 		"chat_enabled_models":  models,
+		"model_catalog":        catalog,
 		"currency":             "USD",
 	}
 	if h.cfg != nil {
+		out["monthly_grant_usd"] = h.cfg.AccountMonthlyGrantUSD
+		out["monthly_grant_shared"] = true
 		out["subscriptions_enabled"] = h.cfg.SubscriptionsEnabled
 		out["subscription_period_days"] = h.cfg.SubscriptionPeriodDays
 		if h.cfg.SubscriptionsEnabled {

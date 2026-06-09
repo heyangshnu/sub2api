@@ -23,6 +23,7 @@ var (
 
 	ErrPaymentRequired       = errors.New("payment required before creating api key")
 	ErrKeySpendLimitExceeded = errors.New("api key spend limit exceeded")
+	ErrKeyModelNotAllowed    = errors.New("model not allowed for this api key")
 
 	ErrSubscriptionRequired      = errors.New("active subscription required")
 	ErrSubscriptionCapExceeded   = errors.New("subscription monthly spend cap exceeded")
@@ -90,6 +91,7 @@ type Store interface {
 	GetKeySpentTotal(ctx context.Context, keyID string) (float64, error)
 	AddKeySpent(ctx context.Context, keyID string, amount float64) error
 	SetKeySpendLimit(ctx context.Context, keyHash string, spendLimit *float64) error
+	SetKeyAllowedModels(ctx context.Context, keyHash string, allowedModels []string) error
 	ListAccountTransactions(ctx context.Context, userID string, limit, offset int) ([]*model.Transaction, int, error)
 
 	// Admin (Redis+SQLite; MemoryStore returns ErrAdminNotSupported)

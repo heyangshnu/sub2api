@@ -71,6 +71,23 @@ func (h *DashboardHandler) CreateKey(c *gin.Context) {
 		name = "Dashboard Key"
 	}
 
+	if len(req.AllowedModels) != 1 {
+		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Select exactly one model for this API key"))
+		return
+	}
+	var boundModel string
+	var ok bool
+	if h.cfg != nil {
+		boundModel, ok = h.cfg.ValidateSinglePlatformModel(req.AllowedModels)
+	} else if _, ok = model.LookupPlatformModel(req.AllowedModels[0]); ok {
+		boundModel = req.AllowedModels[0]
+	}
+	if !ok {
+		c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid or unavailable model"))
+		return
+	}
+	allowedModels := []string{boundModel}
+
 	rawKey, apiKey, err := h.store.CreateKey(c.Request.Context(), uid, name, 0, rateLimit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to create key"))
@@ -80,16 +97,19 @@ func (h *DashboardHandler) CreateKey(c *gin.Context) {
 		_ = h.store.SetKeySpendLimit(c.Request.Context(), apiKey.KeyHash, req.SpendLimit)
 		apiKey.SpendLimit = req.SpendLimit
 	}
+	_ = h.store.SetKeyAllowedModels(c.Request.Context(), apiKey.KeyHash, allowedModels)
+	apiKey.AllowedModels = allowedModels
 
 	// 明文 Key 仅此一次返回
 	c.JSON(http.StatusCreated, gin.H{
-		"key":        rawKey,
-		"key_id":     apiKey.ID,
-		"key_prefix": apiKey.KeyPrefix,
-		"name":       apiKey.Name,
-		"balance":    apiKey.Balance,
-		"rate_limit": apiKey.RateLimit,
-		"warning":    "This is the only time you will see this key. Please save it securely.",
+		"key":            rawKey,
+		"key_id":         apiKey.ID,
+		"key_prefix":     apiKey.KeyPrefix,
+		"name":           apiKey.Name,
+		"balance":        apiKey.Balance,
+		"rate_limit":     apiKey.RateLimit,
+		"allowed_models": apiKey.AllowedModels,
+		"warning":        "This is the only time you will see this key. Please save it securely.",
 	})
 }
 
@@ -135,6 +155,25 @@ func (h *DashboardHandler) UpdateKeySettings(c *gin.Context) {
 		}
 		if err := h.store.SetKeySpendLimit(c.Request.Context(), key.KeyHash, req.SpendLimit); err != nil {
 			c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to update spend limit"))
+			return
+		}
+	}
+	if req.AllowedModels != nil {
+		if len(req.AllowedModels) != 1 {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "API key must be bound to exactly one model"))
+			return
+		}
+		if h.cfg == nil {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Server config unavailable"))
+			return
+		}
+		boundModel, ok := h.cfg.ValidateSinglePlatformModel(req.AllowedModels)
+		if !ok {
+			c.JSON(http.StatusBadRequest, model.NewAPIError("invalid_request_error", "Invalid or unavailable model"))
+			return
+		}
+		if err := h.store.SetKeyAllowedModels(c.Request.Context(), key.KeyHash, []string{boundModel}); err != nil {
+			c.JSON(http.StatusInternalServerError, model.NewAPIError("internal_error", "Failed to update allowed models"))
 			return
 		}
 	}

@@ -357,6 +357,21 @@ func (s *RedisStore) SetKeySpendLimit(ctx context.Context, keyHash string, spend
 	return s.client.Set(ctx, KeyPrefixAPIKey+keyHash, keyJSON, 0).Err()
 }
 
+func (s *RedisStore) SetKeyAllowedModels(ctx context.Context, keyHash string, allowedModels []string) error {
+	key, err := s.GetKeyByHash(ctx, keyHash)
+	if err != nil {
+		return err
+	}
+	key.AllowedModels = allowedModels
+	key.UpdatedAt = time.Now()
+	keyJSON, _ := json.Marshal(key)
+	if err := s.client.Set(ctx, KeyPrefixAPIKey+keyHash, keyJSON, 0).Err(); err != nil {
+		return err
+	}
+	s.writeThroughKey(ctx, key)
+	return nil
+}
+
 func (s *RedisStore) ListAccountTransactions(ctx context.Context, userID string, limit, offset int) ([]*model.Transaction, int, error) {
 	// Scan tx:* and filter by user_id (acceptable for MVP; optimize with user index later)
 	var cursor uint64

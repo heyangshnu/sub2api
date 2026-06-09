@@ -104,6 +104,7 @@ export interface APIKey {
   spend_limit?: number | null;
   spent_total?: number;
   ip_whitelist?: string[];
+  allowed_models?: string[];
   created_at: string;
 }
 
@@ -325,6 +326,15 @@ class APIClient {
     terms_version?: string;
     terms_required?: boolean;
     chat_enabled_models?: string[];
+    model_catalog?: Array<{
+      id: string;
+      label: string;
+      provider_model?: string;
+      kind?: "chat" | "image";
+      provider?: string;
+    }>;
+    monthly_grant_usd?: number;
+    monthly_grant_shared?: boolean;
     currency?: string;
     subscriptions_enabled?: boolean;
     subscription_period_days?: number;
@@ -444,7 +454,8 @@ class APIClient {
     password: string,
     name?: string,
     rateLimit?: number,
-    spendLimit?: number
+    spendLimit?: number,
+    allowedModels?: string[]
   ): Promise<{
     key: string;
     key_id: string;
@@ -452,6 +463,7 @@ class APIClient {
     name: string;
     balance: number;
     rate_limit: number;
+    allowed_models?: string[];
     warning: string;
   }> {
     return this.authRequest("/dashboard/keys", {
@@ -461,6 +473,7 @@ class APIClient {
         name,
         rate_limit: rateLimit,
         spend_limit: spendLimit,
+        allowed_models: allowedModels,
       }),
     });
   }

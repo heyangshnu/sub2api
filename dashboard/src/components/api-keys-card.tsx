@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useT } from "@/lib/i18n";
-import { apiClient, APIKey } from "@/lib/api";
+import { apiClient, UserProfile, APIKey } from "@/lib/api";
+import {
+  FALLBACK_PLATFORM_MODELS,
+  modelLabel,
+  resolveSelectableModels,
+  type PlatformModel,
+} from "@/lib/model-catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +43,7 @@ function formatDate(dateStr: string) {
   });
 }
 
-export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
+export function ApiKeysCard() {
   const t = useT();
   const { apiKeys, apiKey: currentApiKey, userProfile, refreshKeys, bindUsageApiKey, requireAuth, authMode } =
     useAuth();
@@ -50,12 +56,38 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
   const [createPassword, setCreatePassword] = useState("");
   const [createRateLimit, setCreateRateLimit] = useState(60);
   const [createSpendLimit, setCreateSpendLimit] = useState("");
+  const [createAllowedModel, setCreateAllowedModel] = useState("");
+  const [selectableModels, setSelectableModels] = useState<PlatformModel[]>(FALLBACK_PLATFORM_MODELS);
+  const [modelCatalog, setModelCatalog] = useState<PlatformModel[]>(FALLBACK_PLATFORM_MODELS);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
 
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [testMessage, setTestMessage] = useState("");
+
+  useEffect(() => {
+    apiClient
+      .getAuthConfig()
+      .then((cfg) => {
+        const catalog =
+          cfg.model_catalog && cfg.model_catalog.length > 0
+            ? cfg.model_catalog
+            : FALLBACK_PLATFORM_MODELS;
+        setModelCatalog(catalog);
+        const selectable = resolveSelectableModels(
+          catalog,
+          cfg.chat_enabled_models,
+          userProfile,
+          cfg.subscriptions_enabled
+        );
+        setSelectableModels(selectable);
+        setCreateAllowedModel((prev) =>
+          selectable.some((m) => m.id === prev) ? prev : (selectable[0]?.id ?? "")
+        );
+      })
+      .catch(() => {});
+  }, [userProfile]);
 
   const runConnectionTest = async (keyOverride?: string) => {
     const key = keyOverride ?? currentApiKey;
@@ -102,7 +134,8 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
         createPassword,
         createName,
         createRateLimit,
-        spend
+        spend,
+        createAllowedModel ? [createAllowedModel] : undefined
       );
       setNewKey(result.key);
       setCreatePassword("");
@@ -123,6 +156,7 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
     setCreatePassword("");
     setCreateName("");
     setCreateRateLimit(60);
+    setCreateSpendLimit("");
   };
 
   const openSettings = (key: APIKey) => {
@@ -168,7 +202,7 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
   // Login with API key only (no JWT): show limited view
   if (authMode !== "jwt" && currentApiKey && apiKeys.length === 0) {
     return (
-      <RippleCard rippleDelay={rippleDelay} className="text-slate-800">
+      <RippleCard className="text-slate-800">
         <CardHeader>
           <h2 className={ct.panelTitle}>{t("apiKeys.currentKey")}</h2>
           <p className={ct.panelDesc}>{t("apiKeys.loggedInWithKey")}</p>
@@ -200,7 +234,7 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
   }
 
   return (
-    <RippleCard rippleDelay={rippleDelay} className="text-slate-800">
+    <RippleCard className="text-slate-800">
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
@@ -337,6 +371,31 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label>{t("apiKeys.boundModel")}</Label>
+                      <p className={cn(ct.panelDesc, "text-xs")}>{t("apiKeys.boundModelDesc")}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {selectableModels.map((m) => (
+                          <label
+                            key={m.id}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+                              createAllowedModel === m.id
+                                ? "border-teal-500 bg-teal-50 ring-1 ring-teal-500/30"
+                                : "border-slate-200/90"
+                            )}
+                          >
+                            <input
+                              type="radio"
+                              name="create-key-model"
+                              checked={createAllowedModel === m.id}
+                              onChange={() => setCreateAllowedModel(m.id)}
+                            />
+                            <span>{m.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="key-password">{t("apiKeys.yourPassword")}</Label>
                       <Input
                         id="key-password"
@@ -352,7 +411,7 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
                     <DialogFooter>
                       <Button
                         onClick={handleCreateKey}
-                        disabled={createLoading || !createPassword}
+                        disabled={createLoading || !createPassword || !createAllowedModel}
                       >
                         {createLoading ? t("apiKeys.creating") : t("apiKeys.createKeyBtn")}
                       </Button>
@@ -375,6 +434,7 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
                 <TableHead>{t("apiKeys.colPrefix")}</TableHead>
                 <TableHead>{t("apiKeys.colBalance")}</TableHead>
                 <TableHead>{t("apiKeys.colRate")}</TableHead>
+                <TableHead>{t("apiKeys.colModels")}</TableHead>
                 <TableHead>{t("apiKeys.colIp")}</TableHead>
                 <TableHead>{t("apiKeys.colStatus")}</TableHead>
                 <TableHead>{t("apiKeys.colCreated")}</TableHead>
@@ -395,6 +455,11 @@ export function ApiKeysCard({ rippleDelay = 0 }: { rippleDelay?: number }) {
                   </TableCell>
                   <TableCell className="text-sm">
                     {key.rate_limit || 60}/min
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {key.allowed_models && key.allowed_models.length === 1
+                      ? modelLabel(modelCatalog, key.allowed_models[0])
+                      : t("apiKeys.legacyAllModels")}
                   </TableCell>
                   <TableCell className="text-sm">
                     {key.ip_whitelist && key.ip_whitelist.length > 0
